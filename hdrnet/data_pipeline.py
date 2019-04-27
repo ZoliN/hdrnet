@@ -185,7 +185,7 @@ class ImageFilesDataPipeline(DataPipeline):
     if not check_dir(dirname):
       raise ValueError("Invalid data path.")
     with open(self.path, 'r') as fid:
-      flist = [l.strip() for l in fid.xreadlines()]
+      flist = [l.strip() for l in fid]
 
     if self.shuffle:
       random.shuffle(flist)
@@ -253,7 +253,7 @@ class HDRpDataPipeline(DataPipeline):
     root = os.path.dirname(os.path.abspath(self.path))
     # TODO: check dir structure
     with open(self.path, 'r') as fid:
-      flist = [l.strip() for l in fid.xreadlines()]
+      flist = [l.strip() for l in fid]
     input_files = [os.path.join(root, f) for f in flist if '.tfrecords' in f]
 
     if self.shuffle:
@@ -291,10 +291,10 @@ class StyleTransferDataPipeline(DataPipeline):
   def _produce_one_sample(self):
     # TODO: check dir structure
     with open(os.path.join(self.path, 'filelist.txt'), 'r') as fid:
-      flist = [l.strip() for l in fid.xreadlines()]
+      flist = [l.strip() for l in fid]
 
     with open(os.path.join(self.path, 'targets.txt'), 'r') as fid:
-      tlist = [l.strip() for l in fid.xreadlines()]
+      tlist = [l.strip() for l in fid]
 
     input_files = []
     model_files = []
