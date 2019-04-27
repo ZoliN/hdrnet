@@ -19,6 +19,16 @@ This is not an official Google product.
 
 ## Setup
 
+### Tested on
+
+    Google Colab environment
+    No LSB modules are available.
+    Distributor ID:	Ubuntu
+    Description:	Ubuntu 18.04.2 LTS
+    Release:	18.04
+    Codename:	bionic
+    CUDA Version 10.0.130
+
 ### Dependencies
 
 To install the Python dependencies, run:
