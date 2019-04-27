@@ -60,7 +60,7 @@ class HDRNetCurves(object):
 
   @classmethod
   def _coefficients(cls, input_tensor, params, is_training):
-    bs = input_tensor.get_shape().as_list()[0]
+    bs = input_tensor.get_shape().as_list()[0] or -1
     gd = params['luma_bins']
     cm = params['channel_multiplier']
     spatial_bin = params['spatial_bin']
