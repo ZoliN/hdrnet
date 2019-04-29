@@ -104,10 +104,15 @@ class DataPipeline(object):
   def _produce_one_sample(self):
     pass
 
-  def _batch_samples(self, sample):
+  def _batch_samples(self, ds):
     """Batch several samples together."""
 
     # Batch and shuffle
+    if self.shuffle:
+      ds = ds.shuffle(self.min_after_dequeue)
+    ds = ds.batch(self.batch_size, drop_remainder=True)
+    ds = ds.repeat()
+    '''
     if self.shuffle:
       samples = tf.train.shuffle_batch(
           sample,
@@ -121,7 +126,8 @@ class DataPipeline(object):
           batch_size=self.batch_size,
           num_threads=self.nthreads,
           capacity=self.capacity)
-    return samples
+    '''
+    return ds
 
   def _augment_data(self, inout, nchan=6):
     """Flip, crop and rotate samples randomly."""
@@ -195,10 +201,6 @@ class ImageFilesDataPipeline(DataPipeline):
 
     self.nsamples = len(input_files)
 
-    input_queue, output_queue = tf.train.slice_input_producer(
-        [input_files, output_files], shuffle=self.shuffle,
-        seed=42, num_epochs=self.num_epochs)
-
     if '16-bit' in magic.from_file(input_files[0]):
       input_dtype = tf.uint16
       input_wl = 65535.0
@@ -212,34 +214,45 @@ class ImageFilesDataPipeline(DataPipeline):
       output_wl = 255.0
       output_dtype = tf.uint8
 
-    input_file = tf.read_file(input_queue)
-    output_file = tf.read_file(output_queue)
+    
+    all_image_paths = list(zip(input_files,output_files))
+    path_ds = tf.data.Dataset.from_tensor_slices(all_image_paths)
 
-    if os.path.splitext(input_files[0])[-1] == '.jpg': 
-      im_input = tf.image.decode_jpeg(input_file, channels=3)
-    else:
-      im_input = tf.image.decode_png(input_file, dtype=input_dtype, channels=3)
+    def preproc(x):
+      input_file = tf.read_file(x[0])
+      output_file = tf.read_file(x[1])
 
-    if os.path.splitext(output_files[0])[-1] == '.jpg': 
-      im_output = tf.image.decode_jpeg(output_file, channels=3)
-    else:
-      im_output = tf.image.decode_png(output_file, dtype=output_dtype, channels=3)
+      if os.path.splitext(input_files[0])[-1] == '.jpg': 
+        im_input = tf.image.decode_jpeg(input_file, channels=3)
+      else:
+        im_input = tf.image.decode_png(input_file, dtype=input_dtype, channels=3)
 
-    # normalize input/output
-    sample = {}
-    with tf.name_scope('normalize_images'):
-      im_input = tf.to_float(im_input)/input_wl
-      im_output = tf.to_float(im_output)/output_wl
+      if os.path.splitext(output_files[0])[-1] == '.jpg': 
+        im_output = tf.image.decode_jpeg(output_file, channels=3)
+      else:
+        im_output = tf.image.decode_png(output_file, dtype=output_dtype, channels=3)
 
-    inout = tf.concat([im_input, im_output], 2)
-    fullres, inout = self._augment_data(inout, 6)
+      # normalize input/output
+      sample = {}
+      with tf.name_scope('normalize_images'):
+        im_input = tf.to_float(im_input)/input_wl
+        im_output = tf.to_float(im_output)/output_wl
 
-    sample['lowres_input'] = inout[:, :, :3]
-    sample['lowres_output'] = inout[:, :, 3:]
-    sample['image_input'] = fullres[:, :, :3]
-    sample['image_output'] = fullres[:, :, 3:]
-    return sample
+      inout = tf.concat([im_input, im_output], 2)
+      fullres, inout = self._augment_data(inout, 6)
 
+      sample = {}
+
+      sample['lowres_input'] = inout[:, :, :3]
+      sample['lowres_output'] = inout[:, :, 3:]
+      sample['image_input'] = fullres[:, :, :3]
+      sample['image_output'] = fullres[:, :, 3:]
+
+      return sample
+
+    ds = path_ds.map(preproc, num_parallel_calls=2)
+
+    return ds
 
 class HDRpDataPipeline(DataPipeline):
   """Pipeline to process HDR+ dumps
