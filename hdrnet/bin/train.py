@@ -25,7 +25,6 @@ import time
 import sys 
 
 sys.path.append(os.path.join(os.path.dirname(__file__),'../..'))
-print(sys.path)
 
 import hdrnet.metrics as metrics
 
@@ -72,6 +71,7 @@ def main(args, model_params, data_params):
     train_data_pipeline = data_pipe(
         args.data_dir,
         shuffle=False,
+        net_input_size=args.net_input_size,
         capacity=1,
         batch_size=args.batch_size, nthreads=args.data_threads,
         fliplr=args.fliplr, flipud=args.flipud, rotate=args.rotate,
@@ -122,14 +122,14 @@ def main(args, model_params, data_params):
       minimize = opt.minimize(loss, name='optimizer', global_step=global_step)
 
   # Average loss and psnr for display
-#   with tf.name_scope("moving_averages"):
-#     ema = tf.train.ExponentialMovingAverage(decay=0.99)
-#     update_ma = ema.apply([loss, psnr])
-#     loss = ema.average(loss)
-#     psnr = ema.average(psnr)
+  with tf.name_scope("moving_averages"):
+    ema = tf.train.ExponentialMovingAverage(decay=0.99)
+    update_ma = ema.apply([loss, psnr])
+    loss = ema.average(loss)
+    psnr = ema.average(psnr)
 
   # Training stepper operation
-  train_op = minimize#tf.group(minimize, update_ma)
+  train_op = tf.group(minimize, update_ma)
 
   # Save a few graphs to tensorboard
 #   summaries = [
