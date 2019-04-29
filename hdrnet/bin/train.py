@@ -22,6 +22,10 @@ import os
 import setproctitle
 import tensorflow as tf
 import time
+import sys 
+
+sys.path.append(os.path.join(os.path.dirname(__file__),'../..'))
+print(sys.path)
 
 import hdrnet.metrics as metrics
 
@@ -67,12 +71,15 @@ def main(args, model_params, data_params):
   with tf.variable_scope('train_data'):
     train_data_pipeline = data_pipe(
         args.data_dir,
-        shuffle=True,
+        shuffle=False,
+        capacity=1,
         batch_size=args.batch_size, nthreads=args.data_threads,
         fliplr=args.fliplr, flipud=args.flipud, rotate=args.rotate,
         random_crop=args.random_crop, params=data_params,
         output_resolution=args.output_resolution)
     train_samples = train_data_pipeline.samples
+    train_samples = train_samples.make_one_shot_iterator()
+    samples = train_samples.get_next()
 
   if args.eval_data_dir is not None:
     with tf.variable_scope('eval_data'):
@@ -90,10 +97,10 @@ def main(args, model_params, data_params):
   with tf.name_scope('train'):
     with tf.variable_scope('inference'):
       prediction = mdl.inference(
-          train_samples['lowres_input'], train_samples['image_input'],
+          samples['lowres_input'], samples['image_input'],
           model_params, is_training=True)
-    loss = metrics.l2_loss(train_samples['image_output'], prediction)
-    psnr = metrics.psnr(train_samples['image_output'], prediction)
+    loss = metrics.l2_loss(samples['image_output'], prediction)
+    psnr = metrics.psnr(samples['image_output'], prediction)
 
   # Evaluation graph
   if args.eval_data_dir is not None:
@@ -115,22 +122,22 @@ def main(args, model_params, data_params):
       minimize = opt.minimize(loss, name='optimizer', global_step=global_step)
 
   # Average loss and psnr for display
-  with tf.name_scope("moving_averages"):
-    ema = tf.train.ExponentialMovingAverage(decay=0.99)
-    update_ma = ema.apply([loss, psnr])
-    loss = ema.average(loss)
-    psnr = ema.average(psnr)
+#   with tf.name_scope("moving_averages"):
+#     ema = tf.train.ExponentialMovingAverage(decay=0.99)
+#     update_ma = ema.apply([loss, psnr])
+#     loss = ema.average(loss)
+#     psnr = ema.average(psnr)
 
   # Training stepper operation
-  train_op = tf.group(minimize, update_ma)
+  train_op = minimize#tf.group(minimize, update_ma)
 
   # Save a few graphs to tensorboard
-  summaries = [
-    tf.summary.scalar('loss', loss),
-    tf.summary.scalar('psnr', psnr),
-    tf.summary.scalar('learning_rate', args.learning_rate),
-    tf.summary.scalar('batch_size', args.batch_size),
-  ]
+#   summaries = [
+#     tf.summary.scalar('loss', loss),
+#     tf.summary.scalar('psnr', psnr),
+#     tf.summary.scalar('learning_rate', args.learning_rate),
+#     tf.summary.scalar('batch_size', args.batch_size),
+#   ]
 
   log_fetches = {
       "step": global_step,
@@ -141,11 +148,14 @@ def main(args, model_params, data_params):
   config = tf.ConfigProto()
   config.gpu_options.allow_growth = True  # Do not canibalize the entire GPU
   sv = tf.train.Supervisor(
-      logdir=args.checkpoint_dir,
-      save_summaries_secs=args.summary_interval,
-      save_model_secs=args.checkpoint_interval)
+       logdir=args.checkpoint_dir,
+       save_summaries_secs=args.summary_interval,
+       save_model_secs=args.checkpoint_interval)
 
   # Train loop
+  #with tf.Session(config=config) as sess:
+    
+  #  sess.run(tf.global_variables_initializer())
   with sv.managed_session(config=config) as sess:
     sv.loop(args.log_interval, log_hook, (sess, log_fetches))
     last_eval = time.time()
@@ -154,24 +164,8 @@ def main(args, model_params, data_params):
         log.info("stopping supervisor")
         break
       try:
-        step, _ = sess.run([global_step, train_op])
+        step, _, = sess.run([global_step, train_op])
         since_eval = time.time()-last_eval
-
-        if args.eval_data_dir is not None and since_eval > args.eval_interval:
-          log.info("Evaluating on {} images at step {}".format(
-              eval_data_pipeline.nsamples, step))
-
-          p_ = 0
-          for it in range(eval_data_pipeline.nsamples):
-            p_ += sess.run(eval_psnr)
-          p_ /= eval_data_pipeline.nsamples
-
-          sv.summary_writer.add_summary(tf.Summary(value=[
-            tf.Summary.Value(tag="psnr/eval", simple_value=p_)]), global_step=step)
-
-          log.info("  Evaluation PSNR = {:.1f} dB".format(p_))
-
-          last_eval = time.time()
 
       except tf.errors.AbortedError:
         log.error("Aborted")
