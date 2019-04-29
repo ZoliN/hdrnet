@@ -12,6 +12,7 @@ CC = c++ -std=c++11
 NVCC = nvcc -std c++11
 CFLAGS = -fPIC -I$(TF_INC) -O2 -D_GLIBCXX_USE_CXX11_ABI=0  $(TF_CFLAGS) $(TF_LFLAGS)
 LDFLAGS = -L$(CUDA_HOME)/lib64 -lcudart
+# see this https://arnon.dk/matching-sm-architectures-arch-and-gencode-for-various-nvidia-cards/
 NVFLAGS = -DGOOGLE_CUDA=1 -DNDEBUG -x cu -Xcompiler -fPIC -I /usr/local -I$(TF_INC) -I$(SRC_DIR) $(TF_CFLAGS) $(TF_LFLAGS)\
 					-gencode=arch=compute_30,code=\"sm_30,compute_30\" \
 					-expt-relaxed-constexpr -Wno-deprecated-gpu-targets -ftz=true --ptxas-options=-v -lineinfo
