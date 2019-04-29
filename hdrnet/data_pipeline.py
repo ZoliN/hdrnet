@@ -71,6 +71,7 @@ class DataPipeline(object):
   def __init__(self, path, batch_size=32,
                capacity=16, 
                min_after_dequeue=4,
+               net_input_size=256,
                output_resolution=[1080, 1920],
                shuffle=False,
                fliplr=False, 
@@ -81,6 +82,7 @@ class DataPipeline(object):
                nthreads=1, 
                num_epochs=None):
     self.path = path
+    self.net_input_size = net_input_size
     self.batch_size = batch_size
     self.capacity = capacity
     self.min_after_dequeue = min_after_dequeue
@@ -169,9 +171,8 @@ class DataPipeline(object):
       fullres = inout
 
       with tf.name_scope('resize'):
-        new_size = 256
         inout = tf.image.resize_images(
-            inout, [new_size, new_size],
+            inout, [self.net_input_size, self.net_input_size],
             method=tf.image.ResizeMethod.NEAREST_NEIGHBOR)
 
       return fullres, inout
