@@ -76,6 +76,12 @@ run:
 To train a model, run the following command:
 
     ./hdrnet/bin/train.py <checkpoint_dir> <path/to_training_data/filelist.txt>
+    
+Example:
+
+    ./drnet/bin/train.py --learning_rate 1e-4 --batch_size 1 --model_name HDRNetPointwiseNNGuide\
+    --output_resolution 256 256 --luma_bins 8 --spatial_bin 16 --guide_complexity 16 --channel_multiplier 2\
+    --fliplr --rotate --net_input_size 128 ./ch /data/DATASETS/Retouche/webds/filelist.txt
 
 Look at `sample_data/identity/` for a typical structure of the training data folder.
 
