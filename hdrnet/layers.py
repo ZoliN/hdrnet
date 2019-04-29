@@ -148,7 +148,7 @@ def bilateral_slice_apply(grid, guide, input_image, has_offset=True, name=None):
     return sliced
 # pylint: enable=redefined-builtin
 
-
+'''
 # pylint: disable=redefined-builtin
 def apply(sliced, input_image, has_affine_term=True, name=None):
   """Applies a sliced affined model to the input image.
@@ -197,3 +197,99 @@ def apply(sliced, input_image, has_affine_term=True, name=None):
 
   return ret
 # pylint: enable=redefined-builtin
+'''
+
+import time
+def local_bilateral_slice(guide, coefs):
+    """
+        For each pixel of guide image we get affince coefs from a bilateral grid
+    
+    """
+    bs = guide.get_shape()[0]
+    spatial_bins = coefs.get_shape()[1]
+    luma_bins = coefs.get_shape()[3]
+    yw = guide.get_shape()[1]
+    xw = guide.get_shape()[2]
+    sp_y = tf.floordiv(guide.get_shape()[1], spatial_bins)
+    sp_x = tf.floordiv(guide.get_shape()[2], spatial_bins)
+    val  = tf.floordiv(256, luma_bins)
+
+    guide = guide * 255
+    guide_flat = tf.expand_dims(tf.reshape(guide, (bs, -1)),-1) # flat
+    idx = tf.expand_dims(tf.tile(tf.expand_dims(tf.range(guide_flat.get_shape()[1]),0), [bs, 1]),-1) # index
+    guide_indexed = tf.concat([tf.cast(idx, tf.float32), guide_flat],2)
+    batch = []
+    for i in xrange(bs):
+        res = tf.map_fn(lambda x: 
+        coefs[
+            i,
+            tf.floordiv(tf.floordiv(tf.cast(x[0],tf.int32), yw), sp_y),
+            tf.floordiv(tf.mod(tf.cast(x[0],tf.int32), xw), sp_x),
+            tf.floordiv(tf.cast(x[1],tf.int32), val),
+            :,:
+        ]
+        , guide_indexed[i], back_prop=True, parallel_iterations=4)
+        res = tf.reshape(res, (1,yw,xw,3,4))
+        batch.append(res)
+    out = tf.cast(tf.concat(batch, axis=0), tf.float32)
+    # example (2, 256, 256, 3, 4) 3 channels, 4 affince coefs(1 for channel and bias)
+    return out
+
+# pylint: disable=redefined-builtin
+def apply(sliced, input_image, has_affine_term=True, name=None):
+    """Applies a sliced affined model to the input image.
+
+    Args:
+      sliced: (Tensor) [batch_size, h, w, n_output, n_input+1] affine coefficients
+      input_image: (Tensor) [batch_size, h, w, n_input] input data onto which to
+        apply the affine transform.
+      name: (string) name for the operation.
+    Returns:
+      ret: (Tensor) [batch_size, h, w, n_output] the transformed data.
+    Raises:
+      ValueError: if the input is not properly dimensioned.
+      ValueError: if the affine model parameter dimensions do not match the input.
+    """
+    with tf.name_scope(name):
+        if len(input_image.get_shape().as_list()) != 4:
+            raise ValueError('input image should have dims [b,h,w,n_in].')
+        in_shape = input_image.get_shape().as_list()
+        sliced_shape = sliced.get_shape().as_list()
+        if (in_shape[:-1] != sliced_shape[:-2]):
+            raise ValueError('input image and affine coefficients'
+                             ' dimensions do not match: {} and {}'.format(
+                                 in_shape, sliced_shape))
+        _, _, _, n_out, n_in = sliced.get_shape().as_list()
+        if has_affine_term:
+            n_in -= 1
+
+        scale = sliced[:, :, :, :, :n_in]
+
+        if has_affine_term:
+            offset = sliced[:, :, :, :, n_in]
+
+        # foreach chanel:
+        #     a*x[0] + b*x[1] + c*x[2] + d = (h,w)
+        #   res [ch1]   (x [ch1]   [aff11]           )   (x [ch1]   [aff21]           )
+        #       [ch2] = (  [ch2] * [aff12] + [aff14] ) + (  [ch2] * [aff22] + [aff24] ) + same for aff3[1-4]
+        #       [ch3]   (  [ch3]   [aff13]           )   (  [ch3]   [aff23]           )
+        #
+
+        out_channels = []
+        for chan in range(n_out):
+            ret = scale[:, :, :, chan, 0] * input_image[:, :, :, 0]
+            for chan_i in range(1, n_in):
+                ret += scale[:, :, :, chan, chan_i] * input_image[:, :, :, chan_i]
+            if has_affine_term:
+                ret += offset[:, :, :, chan]
+            ret = tf.expand_dims(ret, 3)
+            out_channels.append(ret)
+
+        ret = tf.concat(out_channels, 3)
+    return ret
+# pylint: enable=redefined-builtin
+
+def local_bilateral_slice_apply(grid, guide, input_image):
+    sliced = local_bilateral_slice(guide, grid)
+    out = apply(sliced, input_image, name='local_bilaterla_slice_apply')
+    return out
