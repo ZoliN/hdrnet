@@ -21,14 +21,15 @@ This is not an official Google product.
 
 ### Tested on
 
-    Google Colab environment
     No LSB modules are available.
     Distributor ID:	Ubuntu
     Description:	Ubuntu 18.04.2 LTS
     Release:	18.04
     Codename:	bionic
     CUDA Version 10.0.130
+    cuDNN Version 7.5.1
     gcc (Ubuntu 5.5.0-12ubuntu1) 5.5.0 20171010
+    TF 1.13.1
 
 ### Dependencies
 
