@@ -30,6 +30,8 @@ import sys
 import time
 import tensorflow as tf
 
+sys.path.append(os.path.join(os.path.dirname(__file__),'../..'))
+
 import hdrnet.models as models
 import hdrnet.utils as utils
 
