@@ -1,17 +1,13 @@
 # Deep Bilateral Learning for Real-Time Image Enhancements
 Siggraph 2017
 
-Visit our [Project Page](https://groups.csail.mit.edu/graphics/hdrnet/).
+Visit [Project Page](https://groups.csail.mit.edu/graphics/hdrnet/).
 
 [Michael Gharbi](https://mgharbi.com)
 Jiawen Chen
 Jonathan T. Barron
 Samuel W. Hasinoff
 Fredo Durand
-
-Maintained by Michael Gharbi (<gharbi@mit.edu>)
-
-Tested on Python 2.7, Ubuntu 14.04.
 
 ## Disclaimer
 
