@@ -82,8 +82,6 @@ def main(args):
 
   # -------- Setup graph ----------------------------------------------------
   model_params['output_resolution'] = model_params['output_resolution'].tolist()
-  for i in ['depth','n_rate_one','spatial_bin','luma_bins', 'width', 'net_input_size', 'channel_multiplier']:
-    model_params[i] = model_params[i].item() 
   if not hasattr(models, model_params['model_name']):
     log.error("Model {} does not exist".format(params.model_name))
     return
