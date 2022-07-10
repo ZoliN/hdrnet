@@ -15,11 +15,13 @@
 """Python interface to custom Tensorflow operations for HDRnet."""
 
 import os
+#import tensorflow.compat.v1 as tf
 import tensorflow as tf
 from tensorflow.python.framework import ops
 
+#tf.disable_v2_behavior()
 __all__ = ['bilateral_slice', 'bilateral_slice_apply']
-
+#print(" ".join(tf.sysconfig.get_link_flags()))
 path = os.path.dirname(os.path.abspath(__file__))
 path = tf.resource_loader.get_path_to_datafile(
     os.path.join(path, 'lib', 'hdrnet_ops.so'))

@@ -24,6 +24,8 @@ import tensorflow as tf
 import time
 import sys 
 
+tf.disable_v2_behavior() 
+
 sys.path.append(os.path.join(os.path.dirname(__file__),'../..'))
 
 import hdrnet.metrics as metrics

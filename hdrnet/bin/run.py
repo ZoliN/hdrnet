@@ -30,6 +30,8 @@ import sys
 import time
 import tensorflow as tf
 
+tf.disable_v2_behavior() 
+
 sys.path.append(os.path.join(os.path.dirname(__file__),'../..'))
 
 import hdrnet.models as models
@@ -82,10 +84,11 @@ def main(args):
 
   # -------- Setup graph ----------------------------------------------------
   model_params['output_resolution'] = model_params['output_resolution'].tolist()
-  if not hasattr(models, model_params['model_name']):
-    log.error("Model {} does not exist".format(params.model_name))
+  modelname = model_params['model_name'].decode("utf-8")
+  if not hasattr(models, modelname):
+    log.error("Model {} does not exist".format(modelname))
     return
-  mdl = getattr(models, model_params['model_name'])
+  mdl = getattr(models, modelname)
 
   tf.reset_default_graph()
   net_shape = model_params['net_input_size']

@@ -1,7 +1,5 @@
 .cache/
 bazel-*
-data
-output
 hdrnet/sandbox.py
 *.pyc
 log
@@ -11,6 +9,8 @@ WORKSPACE
 tb_*
 old_scripts
 pretrained_models
+input
+output
 
 !pretrained_models/download.py
 !pretrained_models/local_laplacian_sample
