@@ -257,7 +257,7 @@ class HDRNetGaussianPyrNN(HDRNetPointwiseNNGuide):
     current_level = fullres_input
     lvls = [current_level]
     for lvl in range(cls.n_scales()-1):
-      sz = sz / 2
+      sz = tf.to_int32( sz / 2 )
       current_level = tf.image.resize_images(
           current_level, sz, tf.image.ResizeMethod.BILINEAR,
           align_corners=True)
@@ -275,7 +275,7 @@ class HDRNetGaussianPyrNN(HDRNetPointwiseNNGuide):
 
   @classmethod
   def _output(cls, lvls, guide_lvls, coeffs):
-    for il, (lvl, guide_lvl) in enumerate(reversed(zip(lvls, guide_lvls))):
+    for il, (lvl, guide_lvl) in enumerate(reversed(list(zip(lvls, guide_lvls)))):
       c = coeffs[:, :, :, :, il*3:(il+1)*3, :]
       out_lvl = HDRNetPointwiseNNGuide._output(lvl, guide_lvl, c)
 

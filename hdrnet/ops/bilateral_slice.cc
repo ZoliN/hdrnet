@@ -14,8 +14,18 @@
 
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/shape_inference.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/tensor_types.h"
 
 using namespace tensorflow;
+using ::tensorflow::Status;
+//using ::tensorflow::Tensor;
+//using ::tensorflow::TensorShape;
+using ::tensorflow::shape_inference::DimensionHandle;
+using ::tensorflow::shape_inference::InferenceContext;
+using ::tensorflow::shape_inference::ShapeHandle;
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
@@ -27,7 +37,20 @@ REGISTER_OP("BilateralSlice")
   .Output("out: float")
   .Doc(R"doc(
 Slices input in in the location defined by guide, to produce output.
-)doc");
+)doc")
+  .SetShapeFn([](InferenceContext* c) {
+    ShapeHandle grid;
+    TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 5, &grid));
+    ShapeHandle guide;
+    TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 3, &guide));
+    const DimensionHandle batch_size = c->Dim(grid, 0);
+    const DimensionHandle h = c->Dim(guide, 1);
+    const DimensionHandle w = c->Dim(guide, 2);
+    const DimensionHandle grid_channels = c->Dim(grid, 4);
+    c->set_output(0, c->MakeShape({batch_size, h, w, grid_channels}));
+    return Status::OK();
+  });
+
 
 REGISTER_OP("BilateralSliceGrad")
   .Input("in: float")
@@ -44,7 +67,37 @@ REGISTER_OP("BilateralSliceApply")
   .Output("out: float")
   .Doc(R"doc(
 Slices input in in the location defined by guide and apply it, to produce output.
-)doc");
+)doc")
+  .SetShapeFn([](InferenceContext* c) {
+    ShapeHandle grid;
+    TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 5, &grid));
+    ShapeHandle guide;
+    TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 3, &guide));
+    ShapeHandle input_image;
+    TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 4, &input_image));
+    const DimensionHandle batch_size = c->Dim(grid, 0);
+    const DimensionHandle h = c->Dim(input_image, 1);
+    const DimensionHandle w = c->Dim(input_image, 2);
+    DimensionHandle output_channels;
+    bool has_offset;
+    TF_RETURN_IF_ERROR(c->GetAttr("has_offset", &has_offset));
+    if (has_offset) {
+      // With affine offset:
+      // output_channels = grid_channels / (input_channels + 1).
+      DimensionHandle input_channels_offset;
+      TF_RETURN_IF_ERROR(
+          c->Add(c->Dim(input_image, 3), 1, &input_channels_offset));
+      TF_RETURN_IF_ERROR(c->Divide(c->Dim(grid, 4), input_channels_offset,
+                                    true, &output_channels));
+    } else {
+      // Without affine offset:
+      // output_channels = grid_channels / channels_in.
+      TF_RETURN_IF_ERROR(c->Divide(c->Dim(grid, 4), c->Dim(input_image, 3),
+                                    true, &output_channels));
+    }
+    c->set_output(0, c->MakeShape({batch_size, h, w, output_channels}));
+    return Status::OK();
+  });
 
 REGISTER_OP("BilateralSliceApplyGrad")
   .Input("grid: float")
