@@ -21,7 +21,7 @@ import tempfile
 import numpy as np
 import skimage.color as skcolor
 import tensorflow as tf
-
+tf.disable_v2_behavior()
 import hdrnet.hdrnet_ops as ops
 
 
@@ -59,7 +59,7 @@ class BilateralSliceTest(tf.test.TestCase):
       self.assertEqual(output_shape[3], grid_shape[4])
 
   def test_interpolate(self):
-    for dev in ['/gpu:0']:
+    for dev in ['/gpu:0', '/cpu:0']:
       batch_size = 3
       h = 3
       w = 4
@@ -86,7 +86,7 @@ class BilateralSliceTest(tf.test.TestCase):
         self.assertLess(diff, 5e-4)
 
   def test_grid_gradient(self):
-    for dev in ['/gpu:0']:
+    for dev in ['/gpu:0', '/cpu:0']:
       batch_size = 3
       h = 8
       w = 5
@@ -120,7 +120,7 @@ class BilateralSliceTest(tf.test.TestCase):
         self.assertLess(err, 1e-4)
 
   def test_guide_gradient(self):
-    for dev in ['/gpu:0']:
+    for dev in ['/gpu:0', '/cpu:0']:
       batch_size = 2
       h = 7
       w = 8
@@ -151,8 +151,8 @@ class BilateralSliceTest(tf.test.TestCase):
             output_tensor,
             output_shape, delta=1e-4)
 
-        print th
-        print num
+        print(th)
+        print(num)
 
         thresh = 5e-3
         diff = np.abs(th-num)
@@ -163,15 +163,15 @@ class BilateralSliceTest(tf.test.TestCase):
           out_c = y[i] % nchans
           out_x = (y[i]/nchans) % w
           out_y = (y[i]/nchans) / w
-          print "output ({},{},{}) - input ({},{})\n  guide: {:f}\n  theoretical: {:f}\n  numerical: {:f}".format(
-              out_y, out_x, out_c, in_y, in_x, np.ravel(guide_data)[x[i]], th[x[i], y[i]], num[x[i],y[i]])
+          print ("output ({},{},{}) - input ({},{})\n  guide: {:f}\n  theoretical: {:f}\n  numerical: {:f}".format(
+              out_y, out_x, out_c, in_y, in_x, np.ravel(guide_data)[x[i]], th[x[i], y[i]], num[x[i],y[i]]))
 
-        print len(x), 'of', len(np.ravel(diff)), 'errors'
+        print (len(x), 'of', len(np.ravel(diff)), 'errors')
 
-        print 'gradient shape', th.shape
-        print 'guide shape', guide_data.shape
-        print 'grid shape', grid_data.shape
-        print 'output shape', output_shape
+        print ('gradient shape', th.shape)
+        print ('guide shape', guide_data.shape)
+        print ('grid shape', grid_data.shape)
+        print ('output shape', output_shape)
 
         self.assertLess(np.amax(diff), thresh)
 
@@ -187,7 +187,7 @@ class BilateralSliceTest(tf.test.TestCase):
     return optimizer, loss
 
   def test_grid_optimize(self):
-    for dev in ['/gpu:0']:
+    for dev in ['/gpu:0', '/cpu:0']:
       bs= 1
       h = 1
       w = 32
@@ -221,7 +221,7 @@ class BilateralSliceTest(tf.test.TestCase):
         for step in range(10000):
           _, l_ = sess.run([opt, loss])
           if step % 100 == 0:
-            print "Step {}, loss = {:.5f}".format(step, l_)
+            print ("Step {}, loss = {:.5f}".format(step, l_))
 
         out_, target_ = sess.run([output, target])
         out_ = np.squeeze(out_)
@@ -230,7 +230,7 @@ class BilateralSliceTest(tf.test.TestCase):
         assert np.sum(np.square(out_-target_)) < 0.0085
 
   def test_guide_optimize(self):
-    for dev in ['/gpu:0']:
+    for dev in ['/gpu:0', '/cpu:0']:
       bs= 1
       h = 1
       w = 32
@@ -267,7 +267,7 @@ class BilateralSliceTest(tf.test.TestCase):
         for step in range(6000):
           _, l_ = sess.run([opt, loss])
           if step % 100 == 0:
-            print "Step {}, loss = {:.5f}".format(step, l_)
+            print ("Step {}, loss = {:.5f}".format(step, l_))
 
         out_, target_, guide_, grid_ = sess.run([output, target, guide, grid])
         out_ = np.squeeze(out_)
@@ -278,7 +278,7 @@ class BilateralSliceTest(tf.test.TestCase):
         assert np.sum(np.square(out_-target_)) < 1e-4
 
   def test_optimize_both(self):
-    for dev in ['/gpu:0']:
+    for dev in ['/gpu:0', '/cpu:0']:
       bs= 1
       h = 1
       w = 32
@@ -311,7 +311,7 @@ class BilateralSliceTest(tf.test.TestCase):
         for step in range(10000):
           _, l_ = sess.run([opt, loss])
           if step % 100 == 0:
-            print "Step {}, loss = {:.5f}".format(step, l_)
+            print ("Step {}, loss = {:.5f}".format(step, l_))
 
         out_, target_, guide_, grid_ = sess.run([output, target, guide, grid])
         out_ = np.squeeze(out_)
@@ -351,7 +351,7 @@ class BilateralSliceApplyTest(tf.test.TestCase):
     guide_data = np.random.rand(*guide_shape).astype(np.float32)
     input_data = np.random.rand(*input_shape).astype(np.float32)
 
-    for dev in ['/gpu:0']:
+    for dev in ['/gpu:0', '/cpu:0']:
       output_data = self.run_bilateral_slice_apply(dev, grid_data, guide_data, input_data, has_offset=True)
       output_data_no_offset = self.run_bilateral_slice_apply(dev, grid_data, guide_data, input_data, has_offset=False)
       output_shape = list(output_data.shape)
@@ -368,7 +368,7 @@ class BilateralSliceApplyTest(tf.test.TestCase):
     pass
 
   def test_grid_gradient(self):
-    for dev in ['/gpu:0']:
+    for dev in ['/gpu:0', '/cpu:0']:
       batch_size = 3
       h = 8
       w = 5
@@ -410,7 +410,7 @@ class BilateralSliceApplyTest(tf.test.TestCase):
 
   def test_guide_gradient(self):
     #TODO: this does not work yet, differentiable 'max' in the tent: max(1-abs(x), 0)?
-    for dev in ['/gpu:0']:
+    for dev in ['/cpu:0','/gpu:0']:
       batch_size = 1
       h = 6
       w = 15
@@ -465,7 +465,7 @@ class BilateralSliceApplyTest(tf.test.TestCase):
 
 
   def test_input_gradient(self):
-    for dev in ['/gpu:0']:
+    for dev in ['/gpu:0', '/cpu:0']:
       batch_size = 1
       h = 8
       w = 5

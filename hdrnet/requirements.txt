@@ -4,4 +4,6 @@ scikit_image==0.14.2
 python_gflags==3.1.2
 python_magic==0.4.13
 setproctitle==1.1.10
-tensorflow-gpu==1.13.1
+tensorflow-gpu==1.15.5
+opencv-python
+pytest

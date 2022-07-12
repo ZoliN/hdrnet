@@ -12,442 +12,159 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "tensorflow/core/framework/op.h"
-#include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/shape_inference.h"
-#include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/framework/tensor_types.h"
+#include "bilateral_slice.h"
 
-using namespace tensorflow;
-using ::tensorflow::Status;
-//using ::tensorflow::Tensor;
-//using ::tensorflow::TensorShape;
-using ::tensorflow::shape_inference::DimensionHandle;
-using ::tensorflow::shape_inference::InferenceContext;
-using ::tensorflow::shape_inference::ShapeHandle;
+#include <algorithm>
+#include <cmath>
 
-typedef Eigen::ThreadPoolDevice CPUDevice;
-typedef Eigen::GpuDevice GPUDevice;
+#include "numerics.h"
+#include "third_party/array/array.h"
 
-// -- OPS REGISTRAION ---------------------------------------------------------
-REGISTER_OP("BilateralSlice")
-  .Input("in: float")
-  .Input("guide: float")
-  .Output("out: float")
-  .Doc(R"doc(
-Slices input in in the location defined by guide, to produce output.
-)doc")
-  .SetShapeFn([](InferenceContext* c) {
-    ShapeHandle grid;
-    TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 5, &grid));
-    ShapeHandle guide;
-    TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 3, &guide));
-    const DimensionHandle batch_size = c->Dim(grid, 0);
-    const DimensionHandle h = c->Dim(guide, 1);
-    const DimensionHandle w = c->Dim(guide, 2);
-    const DimensionHandle grid_channels = c->Dim(grid, 4);
-    c->set_output(0, c->MakeShape({batch_size, h, w, grid_channels}));
-    return Status::OK();
+namespace hdrnet {
+
+void BilateralSlice(nda::array_ref_of_rank<const float, 5> grid,
+                    nda::array_ref_of_rank<const float, 3> guide,
+                    nda::array_ref_of_rank<float, 4> out) {
+  // - Samples centered at 0.5f.
+  // - Repeating boundary conditions.
+  const int grid_depth = grid.dim<1>().extent();
+  const int grid_width = grid.dim<2>().extent();
+  const int grid_height = grid.dim<3>().extent();
+  const float scale_x = static_cast<float>(grid_width) / guide.width();
+  const float scale_y = static_cast<float>(grid_height) / guide.height();
+
+  nda::for_all_indices(out.shape(), [&](int c, int x, int y, int b) {
+    const float gxf = (x + 0.5f) * scale_x;
+    const float gyf = (y + 0.5f) * scale_y;
+    // Because 0.5f applied afterwards in calculating gz0 and wz, the effective
+    // depth index is:
+    //    guide * grid_depth + 0.5f
+    const float gzf = guide(x, y, b) * grid_depth;
+
+    const int gx0 = static_cast<int>(std::floor(gxf - 0.5f));
+    const int gy0 = static_cast<int>(std::floor(gyf - 0.5f));
+    const int gz0 = static_cast<int>(std::floor(gzf - 0.5f));
+
+    // Grid trilinear interpolation to retrieve grid(gxf, gyf, gzf, i, j).
+    float value = 0.0f;
+    for (int gy = gy0; gy < gy0 + 2; ++gy) {
+      const int gyc = std::clamp(gy, 0, grid_height - 1);
+      const float wy = LerpWeight(gy + 0.5f, gyf);
+
+      for (int gx = gx0; gx < gx0 + 2; ++gx) {
+        const int gxc = std::clamp(gx, 0, grid_width - 1);
+        const float wx = LerpWeight(gx + 0.5f, gxf);
+
+        for (int gz = gz0; gz < gz0 + 2; ++gz) {
+          const int gzc = std::clamp(gz, 0, grid_depth - 1);
+          const float wz = SmoothedLerpWeight(gz + 0.5f, gzf);
+
+          value += wx * wy * wz * grid(c, gzc, gxc, gyc, b);
+        }
+      }
+    }
+    // Grid trilinear interpolation.
+
+    out(c, x, y, b) = value;
   });
+}
 
+void BilateralSliceGridGrad(
+    nda::array_ref_of_rank<const float, 3> guide,
+    nda::array_ref_of_rank<const float, 4> codomain_tangent,
+    nda::array_ref_of_rank<float, 5> grid_vjp_out) {
+  const int grid_depth = grid_vjp_out.dim<1>().extent();
+  const int grid_width = grid_vjp_out.dim<2>().extent();
+  const int grid_height = grid_vjp_out.dim<3>().extent();
+  const int guide_width = guide.width();
+  const int guide_height = guide.height();
+  const float scale_x = static_cast<float>(guide.width()) / grid_width;
+  const float scale_y = static_cast<float>(guide.height()) / grid_height;
 
-REGISTER_OP("BilateralSliceGrad")
-  .Input("in: float")
-  .Input("guide: float")
-  .Input("backprop: float")
-  .Output("grid_grad: float")
-  .Output("guide_grad: float");
+  nda::for_all_indices(grid_vjp_out.shape(), [&](int gc, int gz, int gx, int gy,
+                                                 int b) {
+    const int x0 = static_cast<int>(std::floor(scale_x * (gx + 0.5f - 1.0f)));
+    const int x1_exclusive =
+        static_cast<int>(std::ceil(scale_x * (gx + 0.5f + 1.0f)));
+    const int y0 = static_cast<int>(std::floor(scale_y * (gy + 0.5f - 1.0f)));
+    const int y1_exclusive =
+        static_cast<int>(std::ceil(scale_y * (gy + 0.5f + 1.0f)));
 
-REGISTER_OP("BilateralSliceApply")
-  .Attr("has_offset: bool")
-  .Input("grid: float")
-  .Input("guide: float")
-  .Input("input: float")
-  .Output("out: float")
-  .Doc(R"doc(
-Slices input in in the location defined by guide and apply it, to produce output.
-)doc")
-  .SetShapeFn([](InferenceContext* c) {
-    ShapeHandle grid;
-    TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 5, &grid));
-    ShapeHandle guide;
-    TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 3, &guide));
-    ShapeHandle input_image;
-    TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 4, &input_image));
-    const DimensionHandle batch_size = c->Dim(grid, 0);
-    const DimensionHandle h = c->Dim(input_image, 1);
-    const DimensionHandle w = c->Dim(input_image, 2);
-    DimensionHandle output_channels;
-    bool has_offset;
-    TF_RETURN_IF_ERROR(c->GetAttr("has_offset", &has_offset));
-    if (has_offset) {
-      // With affine offset:
-      // output_channels = grid_channels / (input_channels + 1).
-      DimensionHandle input_channels_offset;
-      TF_RETURN_IF_ERROR(
-          c->Add(c->Dim(input_image, 3), 1, &input_channels_offset));
-      TF_RETURN_IF_ERROR(c->Divide(c->Dim(grid, 4), input_channels_offset,
-                                    true, &output_channels));
-    } else {
-      // Without affine offset:
-      // output_channels = grid_channels / channels_in.
-      TF_RETURN_IF_ERROR(c->Divide(c->Dim(grid, 4), c->Dim(input_image, 3),
-                                    true, &output_channels));
-    }
-    c->set_output(0, c->MakeShape({batch_size, h, w, output_channels}));
-    return Status::OK();
+    float vjp_value = 0.0f;
+    for (int y = y0; y < y1_exclusive; ++y) {
+      const int y_mirror = MirrorBoundary(y, guide_height);
+      const float gyf = (y + 0.5f) / scale_y;
+      const float wy = LerpWeight(gy + 0.5f, gyf);
+
+      for (int x = x0; x < x1_exclusive; ++x) {
+        // TODO(jiawen): Consider using clamp boundary.
+        const int x_mirror = MirrorBoundary(x, guide_width);
+        const float gxf = (x + 0.5f) / scale_x;
+        const float wx = LerpWeight(gx + 0.5f, gxf);
+
+        const float gzf = guide(x_mirror, y_mirror, b) * grid_depth;
+        float wz = SmoothedLerpWeight(gz + 0.5f, gzf);
+        if ((gz == 0 && gzf < 0.5f) ||
+            (gz == grid_depth - 1 && gzf > grid_depth - 0.5f)) {
+          wz = 1.0f;
+        }
+
+        vjp_value += wz * wx * wy * codomain_tangent(gc, x_mirror, y_mirror, b);
+      }  // y
+    }    // x
+
+    grid_vjp_out(gc, gz, gx, gy, b) = vjp_value;
   });
+}
 
-REGISTER_OP("BilateralSliceApplyGrad")
-  .Input("grid: float")
-  .Input("guide: float")
-  .Input("input: float")
-  .Input("backprop: float")
-  .Attr("has_offset: bool")
-  .Output("grid_grad: float")
-  .Output("guide_grad: float")
-  .Output("input_grad: float");
-// ----------------------------------------------------------------------------
+void BilateralSliceGuideGrad(
+    nda::array_ref_of_rank<const float, 5> grid,
+    nda::array_ref_of_rank<const float, 3> guide,
+    nda::array_ref_of_rank<const float, 4> codomain_tangent,
+    nda::array_ref_of_rank<float, 3> guide_vjp_out) {
+  const int grid_channels = grid.dim<0>().extent();
+  const int grid_depth = grid.dim<1>().extent();
+  const int grid_width = grid.dim<2>().extent();
+  const int grid_height = grid.dim<3>().extent();
+  const float scale_x = static_cast<float>(grid_width) / guide.width();
+  const float scale_y = static_cast<float>(grid_height) / guide.height();
 
-// -- KERNEL LAUNCHERS --------------------------------------------------------
-bool BilateralSliceKernelLauncher(
-    const GPUDevice& d,
-    int bs, int gh, int gw, int gd, int chans,
-    int h, int w,
-    const float* const grid, const float* const guide, float* const out);
+  nda::for_all_indices(guide_vjp_out.shape(), [&](int x, int y, int b) {
+    const float gxf = (x + 0.5f) * scale_x;
+    const float gyf = (y + 0.5f) * scale_y;
+    const float gzf = guide(x, y, b) * grid_depth;
 
-bool BilateralSliceGradKernelLauncher(
-    const GPUDevice& d,
-    const float* const grid, const int64* grid_size,
-    const float* const guide, const int64* guide_size,
-    const float* const backprop,
-    float* const grid_grad, float* const guide_grad);
+    const int gx0 = static_cast<int>(std::floor(gxf - 0.5f));
+    const int gy0 = static_cast<int>(std::floor(gyf - 0.5f));
+    const int gz0 = static_cast<int>(std::floor(gzf - 0.5f));
 
-bool BilateralSliceApplyKernelLauncher(
-    const GPUDevice& d,
-    int bs, int gh, int gw, int gd, 
-    int input_chans, int output_chans, bool has_offset,
-    int h, int w,
-    const float* const grid, const float* const guide, const float* const input,
-    float* const out);
+    float vjp_value = 0.0f;
+    for (int c = 0; c < grid_channels; ++c) {
+      float grid_sample = 0.0f;
 
-bool BilateralSliceApplyGradKernelLauncher(
-    const GPUDevice& d,
-    const float* const grid, const int64* grid_size,
-    const float* const guide, const int64* guide_size,
-    const float* const input, const int64* input_size,
-    const float* const backprop,
-    bool has_offset,
-    float* const grid_grad, float* const guide_grad, float* const input_grad);
-// ----------------------------------------------------------------------------
+      // Grid trilinear interpolation to retrieve grid(c, gzf, gxf, gyf, gzf).
+      for (int gy = gy0; gy < gy0 + 2; ++gy) {
+        const int gyc = std::clamp(gy, 0, grid_height - 1);
+        const float wy = LerpWeight(gy + 0.5f, gyf);
 
+        for (int gx = gx0; gx < gx0 + 2; ++gx) {
+          const int gxc = std::clamp(gx, 0, grid_width - 1);
+          const float wx = LerpWeight(gx + 0.5f, gxf);
 
-// ----------------------------------------------------------------------------
-class BilateralSliceOp : public OpKernel {
- public:
-  explicit BilateralSliceOp(OpKernelConstruction* context) : OpKernel(context) {}
+          for (int gz = gz0; gz < gz0 + 2; ++gz) {
+            const int gzc = std::clamp(gz, 0, grid_depth - 1);
+            const float dwz =
+                grid_depth * SmoothedLerpWeightGrad(gz + 0.5f, gzf);
 
-  void Compute(OpKernelContext* context) override {
-    // Grab the inputs
-    const Tensor& bilateral_grid = context->input(0);
-    const Tensor& guide = context->input(1);
-
-    OP_REQUIRES(
-        context, bilateral_grid.dims() == 5,
-        errors::InvalidArgument(
-        R"msg(Input grid should be 5D (batch, height, width, depth, nchannels))msg"));
-    OP_REQUIRES(
-        context, guide.dims() == 3,
-        errors::InvalidArgument(
-        R"msg(Guide image should be 3D (batch, height, width))msg"));
-
-    // Get shape of output tensor
-    TensorShape shape;
-    shape.AddDim(guide.dim_size(0));  // Batch size
-    shape.AddDim(guide.dim_size(1));  // height
-    shape.AddDim(guide.dim_size(2));  // width
-    shape.AddDim(bilateral_grid.dim_size(4));  // channels
-
-    // Allocate output tensor
-    Tensor* output_tensor = NULL;
-    OP_REQUIRES_OK(context, context->allocate_output(0, shape, &output_tensor));
-
-    auto output = output_tensor->flat<float>();
-
-    const int64 *grid_size = bilateral_grid.shape().dim_sizes().data();
-    const int64 *guide_size = guide.shape().dim_sizes().data();
-
-    int h = guide.dim_size(1);
-    int w = guide.dim_size(2);
-    int bs = bilateral_grid.dim_size(0);
-    int gh = bilateral_grid.dim_size(1);
-    int gw = bilateral_grid.dim_size(2);
-    int gd = bilateral_grid.dim_size(3);
-    int chans = bilateral_grid.dim_size(4);
-
-    // Call the cuda kernel launcher
-    if (!context->status().ok()) {
-      return;
-    }
-
-    bool status = BilateralSliceKernelLauncher(
-        context->eigen_device<GPUDevice>(),
-        bs, gh, gw, gd, chans,
-        h, w,
-        bilateral_grid.flat<float>().data(), guide.flat<float>().data(), 
-        output.data());
-
-    if (!status) {
-      context->SetStatus(
-          errors::Internal("Failed launch BilateralSliceKernel."));
-    }
-  }
-};
-
-
-class BilateralSliceGradOp : public OpKernel {
- public:
-  explicit BilateralSliceGradOp(OpKernelConstruction* context) : OpKernel(context) {}
-
-  void Compute(OpKernelContext* context) override {
-    // Grab the inputs
-    const Tensor& bilateral_grid = context->input(0);
-    const Tensor& guide = context->input(1);
-    const Tensor& backprop = context->input(2);
-
-    OP_REQUIRES(
-        context, bilateral_grid.dims() == 5,
-        errors::InvalidArgument(
-        R"msg(Input grid should be 5D (batch, height, width, depth, nchannels))msg"));
-    OP_REQUIRES(
-        context, guide.dims() == 3,
-        errors::InvalidArgument(
-        R"msg(Guide image should be 3D (batch, height, width))msg"));
-    OP_REQUIRES(
-        context, backprop.dims() == 4,
-        errors::InvalidArgument(
-        R"msg(Backprop should be 4D (batch, height, width, nchannels))msg"));
-
-    // Get shape of output tensor
-    TensorShape grid_shape = bilateral_grid.shape();
-    TensorShape guide_shape = guide.shape();
-
-    // Allocate output tensor
-    Tensor* grid_grad = NULL;
-    OP_REQUIRES_OK(context, context->allocate_output(0, grid_shape,
-                                                     &grid_grad));
-    Tensor* guide_grad = NULL;
-    OP_REQUIRES_OK(context, context->allocate_output(1, guide_shape,
-                                                     &guide_grad));
-
-    const int64 grid_size[] {
-      bilateral_grid.dim_size(0),
-      bilateral_grid.dim_size(1),
-      bilateral_grid.dim_size(2),
-      bilateral_grid.dim_size(3),
-      bilateral_grid.dim_size(4)
-    };
-    const int64 guide_size[] {
-      guide.dim_size(0),
-      guide.dim_size(1),
-      guide.dim_size(2)
-    };
-
-    auto grid_grad_array = grid_grad->template flat<float>();
-    auto guide_grad_array = guide_grad->template flat<float>();
-
-    // Call the cuda kernel launcher
-    bool status = BilateralSliceGradKernelLauncher(
-        context->eigen_device<GPUDevice>(),
-        bilateral_grid.flat<float>().data(), grid_size,
-        guide.flat<float>().data(), guide_size,
-        backprop.flat<float>().data(),
-        grid_grad_array.data(), guide_grad_array.data());
-
-    if (!status) {
-      context->SetStatus(
-          errors::Internal("Failed launch BilateralSliceGradKernel."));
-    }
-  }
-};
-
-
-class BilateralSliceApplyOp : public OpKernel {
-  public:
-    explicit BilateralSliceApplyOp(OpKernelConstruction* context) : OpKernel(context) {
-      OP_REQUIRES_OK(context, context->GetAttr("has_offset", &has_offset_));
-    }
-
-    void Compute(OpKernelContext* context) override {
-      // Grab the inputs
-      const Tensor& bilateral_grid = context->input(0);
-      const Tensor& guide = context->input(1);
-      const Tensor& input = context->input(2);
-
-      // Check tensor dims
-      OP_REQUIRES(
-          context, bilateral_grid.dims() == 5,
-          errors::InvalidArgument(
-            R"msg(Input grid should be 5D (batch, height, width, depth, nchannels))msg"));
-      OP_REQUIRES(
-          context, guide.dims() == 3,
-          errors::InvalidArgument(
-            R"msg(Guide image should be 3D (batch, height, width))msg"));
-      OP_REQUIRES(
-          context, input.dims() == 4,
-          errors::InvalidArgument(
-            R"msg(Guide image should be 4D (batch, height, width, nchannels))msg"));
-
-      // Sizes
-      int h = guide.dim_size(1);
-      int w = guide.dim_size(2);
-      int bs = bilateral_grid.dim_size(0);
-      int gh = bilateral_grid.dim_size(1);
-      int gw = bilateral_grid.dim_size(2);
-      int gd = bilateral_grid.dim_size(3);
-      int coeffs_chans = bilateral_grid.dim_size(4);
-      int input_chans = input.dim_size(3);
-
-      OP_REQUIRES(
-          context, input.dim_size(0) == guide.dim_size(0) && input.dim_size(1) == h && input.dim_size(2) == w,
-          errors::InvalidArgument(
-            R"msg(Input and guide size should match.)msg"));
-      OP_REQUIRES(
-          context, guide.dim_size(0) == bs,
-          errors::InvalidArgument(
-            R"msg(Batch sizes should match.)msg"));
-
-      int output_chans = 0;
-      if (has_offset_) {
-        OP_REQUIRES(
-            context, coeffs_chans % (input_chans+1) == 0,
-            errors::InvalidArgument(
-              R"msg(Slicing with affine offset, coefficients grid should have n_out*(n_in+1) channels.)msg"));
-        output_chans = coeffs_chans / (input_chans+1);
-      } else {
-        OP_REQUIRES(
-            context, coeffs_chans % input_chans == 0,
-            errors::InvalidArgument(
-              R"msg(Slicing without affine offset, coefficients grid should have n_out*n_in channels.)msg"));
-        output_chans = coeffs_chans / input_chans;
+            grid_sample += wx * wy * dwz * grid(c, gzc, gxc, gyc, b);
+          }
+        }
       }
+      vjp_value += grid_sample * codomain_tangent(c, x, y, b);
+    }  // Sum over c.
 
-      // Allocate output tensor
-      TensorShape out_shape;
-      out_shape.AddDim(bs);
-      out_shape.AddDim(h);
-      out_shape.AddDim(w);
-      out_shape.AddDim(output_chans);
-      Tensor* output_tensor = NULL;
-      OP_REQUIRES_OK(context, context->allocate_output(0, out_shape, &output_tensor));
+    guide_vjp_out(x, y, b) = vjp_value;
+  });
+}
 
-      // Call the cuda kernel launcher
-      auto output = output_tensor->flat<float>();
-      bool status = BilateralSliceApplyKernelLauncher(
-          context->eigen_device<GPUDevice>(),
-          bs, gh, gw, gd, 
-          input_chans, output_chans, has_offset_,
-          h, w,
-          bilateral_grid.flat<float>().data(), guide.flat<float>().data(), input.flat<float>().data(),
-          output.data());
-
-      if (!status) {
-        context->SetStatus(
-            errors::Internal("Failed to launch BilateralSliceApplyKernel."));
-      }
-    }
-  private:
-    TF_DISALLOW_COPY_AND_ASSIGN(BilateralSliceApplyOp);
-    bool has_offset_;
-};
-
-class BilateralSliceApplyGradOp : public OpKernel {
-  private:
-    bool has_offset;
-
-  public:
-    explicit BilateralSliceApplyGradOp(OpKernelConstruction* context) : OpKernel(context) {
-      OP_REQUIRES_OK(context, context->GetAttr("has_offset", &has_offset));
-    }
-
-    void Compute(OpKernelContext* context) override {
-      // Grab the inputs
-      const Tensor& bilateral_grid = context->input(0);
-      const Tensor& guide = context->input(1);
-      const Tensor& input = context->input(2);
-      const Tensor& backprop = context->input(3);
-
-      OP_REQUIRES(
-          context, bilateral_grid.dims() == 5,
-          errors::InvalidArgument(
-            R"msg(Input grid should be 5D (batch, height, width, depth, nchannels))msg"));
-      OP_REQUIRES(
-          context, guide.dims() == 3,
-          errors::InvalidArgument(
-            R"msg(Guide image should be 3D (batch, height, width))msg"));
-      OP_REQUIRES(
-          context, input.dims() == 4,
-          errors::InvalidArgument(
-            R"msg(Input image should be 4D (batch, height, width, nchannels))msg"));
-      OP_REQUIRES(
-          context, backprop.dims() == 4,
-          errors::InvalidArgument(
-            R"msg(Backprop should be 4D (batch, height, width, nchannels))msg"));
-
-      // Get shape of output tensor
-      TensorShape grid_shape = bilateral_grid.shape();
-      TensorShape guide_shape = guide.shape();
-      TensorShape input_shape = input.shape();
-
-      // Allocate output tensor
-      Tensor* grid_grad = NULL;
-      OP_REQUIRES_OK(context, context->allocate_output(0, grid_shape,
-            &grid_grad));
-      Tensor* guide_grad = NULL;
-      OP_REQUIRES_OK(context, context->allocate_output(1, guide_shape,
-            &guide_grad));
-      Tensor* input_grad = NULL;
-      OP_REQUIRES_OK(context, context->allocate_output(2, input_shape,
-            &input_grad));
-
-      int64 grid_size[5]{bilateral_grid.dim_size(0),
-        bilateral_grid.dim_size(1),
-        bilateral_grid.dim_size(2),
-        bilateral_grid.dim_size(3),
-        bilateral_grid.dim_size(4)};
-      int64 guide_size[3]{guide.dim_size(0),
-        guide.dim_size(1),
-        guide.dim_size(2)};
-      int64 input_size[4]{input.dim_size(0),
-        input.dim_size(1),
-        input.dim_size(2),
-        input.dim_size(3)};
-
-      auto grid_grad_array = grid_grad->template flat<float>();
-      auto guide_grad_array = guide_grad->template flat<float>();
-      auto input_grad_array = input_grad->template flat<float>();
-
-      // Call the cuda kernel launcher
-      bool status = BilateralSliceApplyGradKernelLauncher(
-          context->eigen_device<GPUDevice>(),
-          bilateral_grid.flat<float>().data(), grid_size,
-          guide.flat<float>().data(), guide_size,
-          input.flat<float>().data(), input_size,
-          backprop.flat<float>().data(), has_offset,
-          grid_grad_array.data(), guide_grad_array.data(), input_grad_array.data());
-
-      if (!status) {
-        context->SetStatus(
-            errors::Internal("Failed launch BilateralSliceApplyGradKernel."));
-      }
-    }
-};
-// ----------------------------------------------------------------------------
-
-// -- KERNEL REGISTRATION -----------------------------------------------------
-REGISTER_KERNEL_BUILDER(Name("BilateralSlice").Device(DEVICE_GPU), BilateralSliceOp);
-REGISTER_KERNEL_BUILDER(Name("BilateralSliceGrad").Device(DEVICE_GPU), BilateralSliceGradOp);
-REGISTER_KERNEL_BUILDER(Name("BilateralSliceApply").Device(DEVICE_GPU), BilateralSliceApplyOp);
-REGISTER_KERNEL_BUILDER(Name("BilateralSliceApplyGrad").Device(DEVICE_GPU), BilateralSliceApplyGradOp);
-// ----------------------------------------------------------------------------
+}  // namespace hdrnet

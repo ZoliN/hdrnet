@@ -1,6 +1,8 @@
 TF_INC ?= `python -c 'import tensorflow as tf; print(tf.sysconfig.get_include())'`
+# TF_INC ?= /usr/local/lib/python2.7/dist-packages/tensorflow/include
 TF_CFLAGS=`python -c 'import tensorflow as tf; print(" ".join(tf.sysconfig.get_compile_flags()))'`
 TF_LFLAGS=`python -c 'import tensorflow as tf; print(" ".join(tf.sysconfig.get_link_flags()))'`
+
 CUDA_HOME ?= /usr/local/cuda
 
 SRC_DIR = ops
@@ -8,18 +10,16 @@ SRC_DIR = ops
 BUILD_DIR = build
 LIB_DIR = lib
 
-CC = c++ -std=c++11
-NVCC = nvcc -std c++11
-CFLAGS = -fPIC -I$(TF_INC) -O2 -D_GLIBCXX_USE_CXX11_ABI=0  $(TF_CFLAGS) $(TF_LFLAGS)
+CC = c++ -std=c++17
+NVCC = nvcc -std c++17
+CFLAGS = -DGOOGLE_CUDA=1 -fPIC -I$(TF_INC) -O2 -D_GLIBCXX_USE_CXX11_ABI=0  $(TF_CFLAGS) $(TF_LFLAGS)
 LDFLAGS = -L$(CUDA_HOME)/lib64 -lcudart
-# see this https://arnon.dk/matching-sm-architectures-arch-and-gencode-for-various-nvidia-cards/
-NVFLAGS = -DGOOGLE_CUDA=1 -DNDEBUG -x cu -Xcompiler -fPIC -I /usr/local -I$(TF_INC) -I$(SRC_DIR) $(TF_CFLAGS) $(TF_LFLAGS)\
-					-gencode=arch=compute_75,code=\"sm_75,compute_75\" \
-					-expt-relaxed-constexpr -Wno-deprecated-gpu-targets -ftz=true --ptxas-options=-v -lineinfo
+NVFLAGS = -DGOOGLE_CUDA=1 -D__CUDA__ -x cu -Xcompiler -fPIC -I$(TF_INC)  $(TF_CFLAGS) $(TF_LFLAGS) \
+					-expt-relaxed-constexpr -Wno-deprecated-gpu-targets -ftz=true
 
 
-SRC = bilateral_slice.cc
-CUDA_SRC = bilateral_slice.cu.cc
+SRC = bilateral_slice.cc bilateral_slice_apply.cc bilateral_slice_op.cc bilateral_slice_apply_op.cc
+CUDA_SRC = bilateral_slice.cu.cc bilateral_slice_apply.cu.cc
 CUDA_OBJ = $(addprefix $(BUILD_DIR)/,$(CUDA_SRC:.cc=.o))
 SRCS = $(addprefix $(SRC_DIR)/, $(SRC))
 
