@@ -191,7 +191,7 @@ class HDRNetCurves(object):
 
   @classmethod
   def _output(cls, im, guide, coeffs):
-    with tf.device('/gpu:0'):
+    with tf.device('/cpu:0'):
       out = bilateral_slice_apply(coeffs, guide, im, has_offset=True, name='slice')
     return out
 

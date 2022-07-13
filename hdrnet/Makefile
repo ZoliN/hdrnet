@@ -12,7 +12,7 @@ LIB_DIR = lib
 
 CC = c++ -std=c++17
 NVCC = nvcc -std c++17
-CFLAGS = -DGOOGLE_CUDA=1 -fPIC -I$(TF_INC) -O2 -D_GLIBCXX_USE_CXX11_ABI=0  $(TF_CFLAGS) $(TF_LFLAGS)
+CFLAGS = -fPIC -I$(TF_INC) -O2 -D_GLIBCXX_USE_CXX11_ABI=0  $(TF_CFLAGS) $(TF_LFLAGS)
 LDFLAGS = -L$(CUDA_HOME)/lib64 -lcudart
 NVFLAGS = -DGOOGLE_CUDA=1 -D__CUDA__ -x cu -Xcompiler -fPIC -I$(TF_INC)  $(TF_CFLAGS) $(TF_LFLAGS) \
 					-expt-relaxed-constexpr -Wno-deprecated-gpu-targets -ftz=true
