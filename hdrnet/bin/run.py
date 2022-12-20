@@ -30,7 +30,7 @@ import sys
 import time
 import tensorflow as tf
 
-tf.disable_v2_behavior() 
+tf.compat.v1.disable_v2_behavior() 
 
 sys.path.append(os.path.join(os.path.dirname(__file__),'../..'))
 
@@ -68,9 +68,9 @@ def main(args):
   inputs = get_input_list(args.input)
 
   # -------- Load params ----------------------------------------------------
-  config = tf.ConfigProto()
+  config = tf.compat.v1.ConfigProto()
   config.gpu_options.allow_growth = True
-  with tf.Session(config=config) as sess:
+  with tf.compat.v1.Session(config=config) as sess:
     checkpoint_path = tf.train.latest_checkpoint(args.checkpoint_dir)
     if checkpoint_path is None:
       log.error('Could not find a checkpoint in {}'.format(args.checkpoint_dir))
@@ -78,7 +78,7 @@ def main(args):
 
     metapath = ".".join([checkpoint_path, "meta"])
     log.info('Loading graph from {}'.format(metapath))
-    tf.train.import_meta_graph(metapath)
+    tf.compat.v1.train.import_meta_graph(metapath)
 
     model_params = utils.get_model_params(sess)
 
@@ -90,55 +90,55 @@ def main(args):
     return
   mdl = getattr(models, modelname)
 
-  tf.reset_default_graph()
+  tf.compat.v1.reset_default_graph()
   net_shape = model_params['net_input_size']
-  t_fullres_input = tf.placeholder(tf.float32, (1, None, None, 3))
-  t_lowres_input = tf.placeholder(tf.float32, (1, net_shape, net_shape, 3))
+  t_fullres_input = tf.compat.v1.placeholder(tf.float32, (1, None, None, 3))
+  t_lowres_input = tf.compat.v1.placeholder(tf.float32, (1, net_shape, net_shape, 3))
 
-  with tf.variable_scope('inference'):
+  with tf.compat.v1.variable_scope('inference'):
     prediction = mdl.inference(
         t_lowres_input, t_fullres_input, model_params, is_training=False)
   output = tf.cast(255.0*tf.squeeze(tf.clip_by_value(prediction, 0, 1)), tf.uint8)
-  saver = tf.train.Saver()
+  saver = tf.compat.v1.train.Saver()
 
   if args.debug:
-    coeffs = tf.get_collection('bilateral_coefficients')[0]
+    coeffs = tf.compat.v1.get_collection('bilateral_coefficients')[0]
     if len(coeffs.get_shape().as_list()) == 6:
       bs, gh, gw, gd, no, ni = coeffs.get_shape().as_list()
-      coeffs = tf.transpose(coeffs, [0, 3, 1, 4, 5, 2])
+      coeffs = tf.transpose(a=coeffs, perm=[0, 3, 1, 4, 5, 2])
       coeffs = tf.reshape(coeffs, [bs, gh*gd, gw*ni*no, 1])
       coeffs = tf.squeeze(coeffs)
-      m = tf.reduce_max(tf.abs(coeffs))
+      m = tf.reduce_max(input_tensor=tf.abs(coeffs))
       coeffs = tf.clip_by_value((coeffs+m)/(2*m), 0, 1)
 
-    ms = tf.get_collection('multiscale')
+    ms = tf.compat.v1.get_collection('multiscale')
     if len(ms) > 0:
       for i, m in enumerate(ms):
-        maxi = tf.reduce_max(tf.abs(m))
+        maxi = tf.reduce_max(input_tensor=tf.abs(m))
         m = tf.clip_by_value((m+maxi)/(2*maxi), 0, 1)
-        sz = tf.shape(m)
-        m = tf.transpose(m, [0, 1, 3, 2])
+        sz = tf.shape(input=m)
+        m = tf.transpose(a=m, perm=[0, 1, 3, 2])
         m = tf.reshape(m, [sz[0], sz[1], sz[2]*sz[3]])
         ms[i] = tf.squeeze(m)
 
-    fr = tf.get_collection('fullres_features')
+    fr = tf.compat.v1.get_collection('fullres_features')
     if len(fr) > 0:
       for i, m in enumerate(fr):
-        maxi = tf.reduce_max(tf.abs(m))
+        maxi = tf.reduce_max(input_tensor=tf.abs(m))
         m = tf.clip_by_value((m+maxi)/(2*maxi), 0, 1)
-        sz = tf.shape(m)
-        m = tf.transpose(m, [0, 1, 3, 2])
+        sz = tf.shape(input=m)
+        m = tf.transpose(a=m, perm=[0, 1, 3, 2])
         m = tf.reshape(m, [sz[0], sz[1], sz[2]*sz[3]])
         fr[i] = tf.squeeze(m)
 
-    guide = tf.get_collection('guide')
+    guide = tf.compat.v1.get_collection('guide')
     if len(guide) > 0:
       for i, g in enumerate(guide):
-        maxi = tf.reduce_max(tf.abs(g))
+        maxi = tf.reduce_max(input_tensor=tf.abs(g))
         g = tf.clip_by_value((g+maxi)/(2*maxi), 0, 1)
         guide[i] = tf.squeeze(g)
 
-  with tf.Session(config=config) as sess:
+  with tf.compat.v1.Session(config=config) as sess:
     log.info('Restoring weights from {}'.format(checkpoint_path))
     saver.restore(sess, checkpoint_path)
 

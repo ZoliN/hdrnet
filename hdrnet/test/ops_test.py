@@ -21,7 +21,7 @@ import tempfile
 import numpy as np
 import skimage.color as skcolor
 import tensorflow as tf
-tf.disable_v2_behavior()
+tf.compat.v1.disable_v2_behavior()
 import hdrnet.hdrnet_ops as ops
 
 
@@ -30,9 +30,9 @@ class BilateralSliceTest(tf.test.TestCase):
     with tf.device(dev):
 
       grid_tensor = tf.convert_to_tensor(
-          grid_data, name='grid', dtype=tf.float32)
+          value=grid_data, name='grid', dtype=tf.float32)
       guide_tensor = tf.convert_to_tensor(
-          guide_data, name='guide', dtype=tf.float32)
+          value=guide_data, name='guide', dtype=tf.float32)
 
       output_tensor = ops.bilateral_slice(grid_tensor, guide_tensor)
 
@@ -101,17 +101,17 @@ class BilateralSliceTest(tf.test.TestCase):
       guide_data = np.random.rand(*guide_shape).astype(np.float32)
 
       with tf.device(dev):
-        grid_tensor = tf.convert_to_tensor(grid_data,
+        grid_tensor = tf.convert_to_tensor(value=grid_data,
                                            name='data',
                                            dtype=tf.float32)
-        guide_tensor = tf.convert_to_tensor(guide_data,
+        guide_tensor = tf.convert_to_tensor(value=guide_data,
                                             name='data',
                                             dtype=tf.float32)
 
         output_tensor = ops.bilateral_slice(grid_tensor, guide_tensor)
 
       with self.test_session():
-        err = tf.test.compute_gradient_error(
+        err = tf.compat.v1.test.compute_gradient_error(
             grid_tensor,
             grid_shape,
             output_tensor,
@@ -135,17 +135,17 @@ class BilateralSliceTest(tf.test.TestCase):
       guide_data = np.random.rand(*guide_shape).astype(np.float32)
 
       with tf.device(dev):
-        grid_tensor = tf.convert_to_tensor(grid_data,
+        grid_tensor = tf.convert_to_tensor(value=grid_data,
                                            name='data',
                                            dtype=tf.float32)
-        guide_tensor = tf.convert_to_tensor(guide_data,
+        guide_tensor = tf.convert_to_tensor(value=guide_data,
                                             name='data',
                                             dtype=tf.float32)
 
         output_tensor = ops.bilateral_slice(grid_tensor, guide_tensor)
 
       with self.test_session():
-        th, num = tf.test.compute_gradient(
+        th, num = tf.compat.v1.test.compute_gradient(
             guide_tensor,
             guide_shape,
             output_tensor,
@@ -177,11 +177,11 @@ class BilateralSliceTest(tf.test.TestCase):
 
 
   def l2_optimizer(self, target, output, lr=1e-2):
-    loss = tf.reduce_sum(tf.square(target-output))
+    loss = tf.reduce_sum(input_tensor=tf.square(target-output))
     global_step = tf.Variable(
         0, name='global_step', trainable=False,
-        collections=['global_step', tf.GraphKeys.GLOBAL_VARIABLES])
-    optimizer = tf.train.GradientDescentOptimizer(lr).minimize(
+        collections=['global_step', tf.compat.v1.GraphKeys.GLOBAL_VARIABLES])
+    optimizer = tf.compat.v1.train.GradientDescentOptimizer(lr).minimize(
         loss, global_step=global_step)
 
     return optimizer, loss
@@ -207,8 +207,8 @@ class BilateralSliceTest(tf.test.TestCase):
       target_data = np.tile(target_data, [bs, h, 1, 1])
 
       grid = tf.Variable(grid_data)
-      guide = tf.convert_to_tensor(guide_data)
-      target = tf.convert_to_tensor(target_data)
+      guide = tf.convert_to_tensor(value=guide_data)
+      target = tf.convert_to_tensor(value=target_data)
 
       output = ops.bilateral_slice(grid, guide)
 
@@ -217,7 +217,7 @@ class BilateralSliceTest(tf.test.TestCase):
       opt, loss = self.l2_optimizer(target, output)
 
       with self.test_session() as sess:
-        tf.global_variables_initializer().run()
+        tf.compat.v1.global_variables_initializer().run()
         for step in range(10000):
           _, l_ = sess.run([opt, loss])
           if step % 100 == 0:
@@ -251,10 +251,10 @@ class BilateralSliceTest(tf.test.TestCase):
       target_data = target_data[np.newaxis, np.newaxis, :, np.newaxis]
       target_data = np.tile(target_data, [bs, h, 1, 1])
 
-      grid = tf.convert_to_tensor(grid_data)
+      grid = tf.convert_to_tensor(value=grid_data)
       guide = tf.Variable(guide_data)
       guide = tf.sigmoid(guide)
-      target = tf.convert_to_tensor(target_data)
+      target = tf.convert_to_tensor(value=target_data)
 
       output = ops.bilateral_slice(grid, guide)
 
@@ -263,7 +263,7 @@ class BilateralSliceTest(tf.test.TestCase):
       opt, loss = self.l2_optimizer(target, output, lr=1e-3)
 
       with self.test_session() as sess:
-        tf.global_variables_initializer().run()
+        tf.compat.v1.global_variables_initializer().run()
         for step in range(6000):
           _, l_ = sess.run([opt, loss])
           if step % 100 == 0:
@@ -298,7 +298,7 @@ class BilateralSliceTest(tf.test.TestCase):
       grid = tf.Variable(grid_data)
       guide = tf.Variable(guide_data)
       guide = tf.sigmoid(guide)
-      target = tf.convert_to_tensor(target_data)
+      target = tf.convert_to_tensor(value=target_data)
 
       output = ops.bilateral_slice(grid, guide)
 
@@ -307,7 +307,7 @@ class BilateralSliceTest(tf.test.TestCase):
       opt, loss = self.l2_optimizer(target, output, lr=1e-1)
 
       with self.test_session() as sess:
-        tf.global_variables_initializer().run()
+        tf.compat.v1.global_variables_initializer().run()
         for step in range(10000):
           _, l_ = sess.run([opt, loss])
           if step % 100 == 0:
@@ -329,11 +329,11 @@ class BilateralSliceApplyTest(tf.test.TestCase):
     with tf.device(dev):
 
       grid_tensor = tf.convert_to_tensor(
-          grid_data, name='grid', dtype=tf.float32)
+          value=grid_data, name='grid', dtype=tf.float32)
       guide_tensor = tf.convert_to_tensor(
-          guide_data, name='guide', dtype=tf.float32)
+          value=guide_data, name='guide', dtype=tf.float32)
       input_tensor = tf.convert_to_tensor(
-          input_data, name='input', dtype=tf.float32)
+          value=input_data, name='input', dtype=tf.float32)
 
       output_tensor = ops.bilateral_slice_apply(grid_tensor, guide_tensor, input_tensor, has_offset=has_offset)
 
@@ -387,20 +387,20 @@ class BilateralSliceApplyTest(tf.test.TestCase):
       input_data = np.random.rand(*input_shape).astype(np.float32)
 
       with tf.device(dev):
-        grid_tensor = tf.convert_to_tensor(grid_data,
+        grid_tensor = tf.convert_to_tensor(value=grid_data,
                                            name='data',
                                            dtype=tf.float32)
-        guide_tensor = tf.convert_to_tensor(guide_data,
+        guide_tensor = tf.convert_to_tensor(value=guide_data,
                                             name='guide',
                                             dtype=tf.float32)
-        input_tensor = tf.convert_to_tensor(input_data,
+        input_tensor = tf.convert_to_tensor(value=input_data,
                                             name='input',
                                             dtype=tf.float32)
 
         output_tensor = ops.bilateral_slice_apply(grid_tensor, guide_tensor, input_tensor, has_offset=True)
 
       with self.test_session():
-        err = tf.test.compute_gradient_error(
+        err = tf.compat.v1.test.compute_gradient_error(
             grid_tensor,
             grid_shape,
             output_tensor,
@@ -429,20 +429,20 @@ class BilateralSliceApplyTest(tf.test.TestCase):
       input_data = np.random.rand(*input_shape).astype(np.float32)
 
       with tf.device(dev):
-        grid_tensor = tf.convert_to_tensor(grid_data,
+        grid_tensor = tf.convert_to_tensor(value=grid_data,
                                            name='data',
                                            dtype=tf.float32)
-        guide_tensor = tf.convert_to_tensor(guide_data,
+        guide_tensor = tf.convert_to_tensor(value=guide_data,
                                             name='guide',
                                             dtype=tf.float32)
-        input_tensor = tf.convert_to_tensor(input_data,
+        input_tensor = tf.convert_to_tensor(value=input_data,
                                             name='input',
                                             dtype=tf.float32)
 
         output_tensor = ops.bilateral_slice_apply(grid_tensor, guide_tensor, input_tensor, has_offset=True)
 
       with self.test_session():
-        num, th = tf.test.compute_gradient(
+        num, th = tf.compat.v1.test.compute_gradient(
             guide_tensor,
             guide_shape,
             output_tensor,
@@ -456,7 +456,7 @@ class BilateralSliceApplyTest(tf.test.TestCase):
           guide_idx = np.unravel_index(idx[0][i], guide_shape)
           output_idx = np.unravel_index(idx[1][i], output_shape)
 
-        err = tf.test.compute_gradient_error(
+        err = tf.compat.v1.test.compute_gradient_error(
             guide_tensor,
             guide_shape,
             output_tensor,
@@ -484,20 +484,20 @@ class BilateralSliceApplyTest(tf.test.TestCase):
       input_data = np.random.rand(*input_shape).astype(np.float32)
 
       with tf.device(dev):
-        grid_tensor = tf.convert_to_tensor(grid_data,
+        grid_tensor = tf.convert_to_tensor(value=grid_data,
                                            name='data',
                                            dtype=tf.float32)
-        guide_tensor = tf.convert_to_tensor(guide_data,
+        guide_tensor = tf.convert_to_tensor(value=guide_data,
                                             name='guide',
                                             dtype=tf.float32)
-        input_tensor = tf.convert_to_tensor(input_data,
+        input_tensor = tf.convert_to_tensor(value=input_data,
                                             name='input',
                                             dtype=tf.float32)
 
         output_tensor = ops.bilateral_slice_apply(grid_tensor, guide_tensor, input_tensor, has_offset=True)
 
       with self.test_session():
-        err = tf.test.compute_gradient_error(
+        err = tf.compat.v1.test.compute_gradient_error(
             input_tensor,
             input_shape,
             output_tensor,

@@ -17,7 +17,7 @@ import tensorflow as tf
 
 
 def get_model_params(sess, param_collection="model_params"):
-  pcoll = tf.get_collection(param_collection)
+  pcoll = tf.compat.v1.get_collection(param_collection)
   params_ = {p.name.split(':')[0]: p for p in pcoll}
   model_params = sess.run(params_)
   return model_params

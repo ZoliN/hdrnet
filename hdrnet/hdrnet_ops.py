@@ -22,7 +22,7 @@ from tensorflow.python.framework import ops
 __all__ = ['bilateral_slice', 'bilateral_slice_apply']
 #print(" ".join(tf.sysconfig.get_link_flags()))
 path = os.path.dirname(os.path.abspath(__file__))
-path = tf.resource_loader.get_path_to_datafile(
+path = tf.compat.v1.resource_loader.get_path_to_datafile(
     os.path.join(path, 'lib', 'hdrnet_ops.so'))
 
 _hdrnet = tf.load_op_library(path)

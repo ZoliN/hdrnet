@@ -20,7 +20,7 @@ import numpy as np
 from hdrnet import hdrnet_ops
 
 w_initializer = tf.contrib.layers.variance_scaling_initializer
-b_initializer = tf.constant_initializer
+b_initializer = tf.compat.v1.constant_initializer
 
 def conv(inputs, num_outputs, kernel_size, stride=1, rate=1,
     use_bias=True,
@@ -48,13 +48,13 @@ def conv(inputs, num_outputs, kernel_size, stride=1, rate=1,
       normalizer_params={
         'center':True, 'is_training':is_training,
         'variables_collections':{
-          'beta':[tf.GraphKeys.BIASES],
-          'moving_mean':[tf.GraphKeys.MOVING_AVERAGE_VARIABLES],
-          'moving_variance':[tf.GraphKeys.MOVING_AVERAGE_VARIABLES]},
+          'beta':[tf.compat.v1.GraphKeys.BIASES],
+          'moving_mean':[tf.compat.v1.GraphKeys.MOVING_AVERAGE_VARIABLES],
+          'moving_variance':[tf.compat.v1.GraphKeys.MOVING_AVERAGE_VARIABLES]},
         }, 
       activation_fn=activation_fn, 
-      variables_collections={'weights':[tf.GraphKeys.WEIGHTS], 'biases':[tf.GraphKeys.BIASES]},
-      outputs_collections=[tf.GraphKeys.ACTIVATIONS],
+      variables_collections={'weights':[tf.compat.v1.GraphKeys.WEIGHTS], 'biases':[tf.compat.v1.GraphKeys.BIASES]},
+      outputs_collections=[tf.compat.v1.GraphKeys.ACTIVATIONS],
       scope=scope, reuse=reuse)
   return output
 
@@ -83,12 +83,12 @@ def fc(inputs, num_outputs,
       normalizer_params={
         'center':True, 'is_training':is_training,
         'variables_collections':{
-          'beta':[tf.GraphKeys.BIASES],
-          'moving_mean':[tf.GraphKeys.MOVING_AVERAGE_VARIABLES],
-          'moving_variance':[tf.GraphKeys.MOVING_AVERAGE_VARIABLES]},
+          'beta':[tf.compat.v1.GraphKeys.BIASES],
+          'moving_mean':[tf.compat.v1.GraphKeys.MOVING_AVERAGE_VARIABLES],
+          'moving_variance':[tf.compat.v1.GraphKeys.MOVING_AVERAGE_VARIABLES]},
         }, 
       activation_fn=activation_fn, 
-      variables_collections={'weights':[tf.GraphKeys.WEIGHTS], 'biases':[tf.GraphKeys.BIASES]},
+      variables_collections={'weights':[tf.compat.v1.GraphKeys.WEIGHTS], 'biases':[tf.compat.v1.GraphKeys.BIASES]},
       scope=scope)
   return output
 
@@ -108,7 +108,7 @@ def bilateral_slice(grid, guide, name=None):
     sliced: (Tensor) [batch_size, h, w, n_outputs] sliced output.
   """
 
-  with tf.name_scope(name):
+  with tf.compat.v1.name_scope(name):
     gridshape = grid.get_shape().as_list()
     if len(gridshape) == 6:
       _, _, _, _, n_out, n_in = gridshape
@@ -136,10 +136,10 @@ def bilateral_slice_apply(grid, guide, input_image, has_offset=True, name=None):
     sliced: (Tensor) [batch_size, h, w, n_outputs] sliced output.
   """
 
-  with tf.name_scope(name):
+  with tf.compat.v1.name_scope(name):
     gridshape = grid.get_shape().as_list()
     if len(gridshape) == 6:
-      gs = tf.shape(grid)
+      gs = tf.shape(input=grid)
       _, _, _, _, n_out, n_in = gridshape
       grid = tf.reshape(grid, tf.stack([gs[0], gs[1], gs[2], gs[3], gs[4]*gs[5]]))
       # grid = tf.concat(tf.unstack(grid, None, axis=5), 4)
@@ -210,9 +210,9 @@ def local_bilateral_slice(guide, coefs):
     luma_bins = coefs.get_shape()[3]
     yw = guide.get_shape()[1]
     xw = guide.get_shape()[2]
-    sp_y = tf.floordiv(guide.get_shape()[1], spatial_bins)
-    sp_x = tf.floordiv(guide.get_shape()[2], spatial_bins)
-    val  = tf.floordiv(256, luma_bins)
+    sp_y = tf.math.floordiv(guide.get_shape()[1], spatial_bins)
+    sp_x = tf.math.floordiv(guide.get_shape()[2], spatial_bins)
+    val  = tf.math.floordiv(256, luma_bins)
 
     guide = guide * 255
     guide_flat = tf.expand_dims(tf.reshape(guide, (bs, -1)),-1) # flat
@@ -223,9 +223,9 @@ def local_bilateral_slice(guide, coefs):
         res = tf.map_fn(lambda x: 
         coefs[
             i,
-            tf.floordiv(tf.floordiv(tf.cast(x[0],tf.int32), yw), sp_y),
-            tf.floordiv(tf.mod(tf.cast(x[0],tf.int32), xw), sp_x),
-            tf.floordiv(tf.cast(x[1],tf.int32), val),
+            tf.math.floordiv(tf.math.floordiv(tf.cast(x[0],tf.int32), yw), sp_y),
+            tf.math.floordiv(tf.math.floormod(tf.cast(x[0],tf.int32), xw), sp_x),
+            tf.math.floordiv(tf.cast(x[1],tf.int32), val),
             :,:
         ]
         , guide_indexed[i], back_prop=True, parallel_iterations=4)
@@ -250,7 +250,7 @@ def apply(sliced, input_image, has_affine_term=True, name=None):
       ValueError: if the input is not properly dimensioned.
       ValueError: if the affine model parameter dimensions do not match the input.
     """
-    with tf.name_scope(name):
+    with tf.compat.v1.name_scope(name):
         if len(input_image.get_shape().as_list()) != 4:
             raise ValueError('input image should have dims [b,h,w,n_in].')
         in_shape = input_image.get_shape().as_list()

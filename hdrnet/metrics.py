@@ -19,15 +19,15 @@ import numpy as np
 
 
 def l2_loss(target, prediction, name=None):
-  with tf.name_scope(name, default_name='l2_loss', values=[target, prediction]):
-    loss = tf.reduce_mean(tf.square(target-prediction))
+  with tf.compat.v1.name_scope(name, default_name='l2_loss', values=[target, prediction]):
+    loss = tf.reduce_mean(input_tensor=tf.square(target-prediction))
   return loss
 
 
 def psnr(target, prediction, name=None):
-  with tf.name_scope(name, default_name='psnr_op', values=[target, prediction]):
+  with tf.compat.v1.name_scope(name, default_name='psnr_op', values=[target, prediction]):
     squares = tf.square(target-prediction, name='squares')
-    squares = tf.reshape(squares, [tf.shape(squares)[0], -1])
+    squares = tf.reshape(squares, [tf.shape(input=squares)[0], -1])
     # mean psnr over a batch
-    p = tf.reduce_mean((-10/np.log(10))*tf.log(tf.reduce_mean(squares, axis=[1])))
+    p = tf.reduce_mean(input_tensor=(-10/np.log(10))*tf.math.log(tf.reduce_mean(input_tensor=squares, axis=[1])))
   return p

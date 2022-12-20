@@ -24,7 +24,7 @@ import tensorflow as tf
 import time
 import sys 
 
-tf.disable_v2_behavior() 
+tf.compat.v1.disable_v2_behavior() 
 
 sys.path.append(os.path.join(os.path.dirname(__file__),'../..'))
 
@@ -57,19 +57,19 @@ def main(args, model_params, data_params):
   if not os.path.exists(args.checkpoint_dir):
     os.makedirs(args.checkpoint_dir)
 
-  tf.set_random_seed(1234)  # Make experiments repeatable
+  tf.compat.v1.set_random_seed(1234)  # Make experiments repeatable
 
   # Select an architecture
   mdl = getattr(models, args.model_name)
 
   # Add model parameters to the graph (so they are saved to disk at checkpoint)
   for p in model_params:
-    p_ = tf.convert_to_tensor(model_params[p], name=p)
-    tf.add_to_collection('model_params', p_)
+    p_ = tf.convert_to_tensor(value=model_params[p], name=p)
+    tf.compat.v1.add_to_collection('model_params', p_)
 
   # --- Train/Test datasets ---------------------------------------------------
   data_pipe = getattr(dp, args.data_pipeline)
-  with tf.variable_scope('train_data'):
+  with tf.compat.v1.variable_scope('train_data'):
     train_data_pipeline = data_pipe(
         args.data_dir,
         shuffle=False,
@@ -80,11 +80,11 @@ def main(args, model_params, data_params):
         random_crop=args.random_crop, params=data_params,
         output_resolution=args.output_resolution)
     train_samples = train_data_pipeline.samples
-    train_samples = train_samples.make_one_shot_iterator()
+    train_samples = tf.compat.v1.data.make_one_shot_iterator(train_samples)
     samples = train_samples.get_next()
 
   if args.eval_data_dir is not None:
-    with tf.variable_scope('eval_data'):
+    with tf.compat.v1.variable_scope('eval_data'):
       eval_data_pipeline = data_pipe(
           args.eval_data_dir,
           shuffle=False,
@@ -96,8 +96,8 @@ def main(args, model_params, data_params):
   # ---------------------------------------------------------------------------
 
   # Training graph
-  with tf.name_scope('train'):
-    with tf.variable_scope('inference'):
+  with tf.compat.v1.name_scope('train'):
+    with tf.compat.v1.variable_scope('inference'):
       prediction = mdl.inference(
           samples['lowres_input'], samples['image_input'],
           model_params, is_training=True)
@@ -106,8 +106,8 @@ def main(args, model_params, data_params):
 
   # Evaluation graph
   if args.eval_data_dir is not None:
-    with tf.name_scope('eval'):
-      with tf.variable_scope('inference', reuse=True):
+    with tf.compat.v1.name_scope('eval'):
+      with tf.compat.v1.variable_scope('inference', reuse=True):
         eval_prediction = mdl.inference(
             eval_samples['lowres_input'], eval_samples['image_input'],
             model_params, is_training=False)
@@ -115,16 +115,16 @@ def main(args, model_params, data_params):
 
   # Optimizer
   global_step = tf.contrib.framework.get_or_create_global_step()
-  with tf.name_scope('optimizer'):
-    update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+  with tf.compat.v1.name_scope('optimizer'):
+    update_ops = tf.compat.v1.get_collection(tf.compat.v1.GraphKeys.UPDATE_OPS)
     updates = tf.group(*update_ops, name='update_ops')
     log.info("Adding {} update ops".format(len(update_ops)))
     with tf.control_dependencies([updates]):
-      opt = tf.train.AdamOptimizer(args.learning_rate)
+      opt = tf.compat.v1.train.AdamOptimizer(args.learning_rate)
       minimize = opt.minimize(loss, name='optimizer', global_step=global_step)
 
   # Average loss and psnr for display
-  with tf.name_scope("moving_averages"):
+  with tf.compat.v1.name_scope("moving_averages"):
     ema = tf.train.ExponentialMovingAverage(decay=0.99)
     update_ma = ema.apply([loss, psnr])
     loss = ema.average(loss)
@@ -147,9 +147,9 @@ def main(args, model_params, data_params):
       "psnr": psnr}
 
   # Train config
-  config = tf.ConfigProto()
+  config = tf.compat.v1.ConfigProto()
   config.gpu_options.allow_growth = True  # Do not canibalize the entire GPU
-  sv = tf.train.Supervisor(
+  sv = tf.compat.v1.train.Supervisor(
        logdir=args.checkpoint_dir,
        save_summaries_secs=args.summary_interval,
        save_model_secs=args.checkpoint_interval)

@@ -47,8 +47,8 @@ def main(args):
     return
   metapath = ".".join([checkpoint_path, "meta"])
   log.info("Loading {}".format(metapath))
-  tf.train.import_meta_graph(metapath)
-  with tf.Session() as sess:
+  tf.compat.v1.train.import_meta_graph(metapath)
+  with tf.compat.v1.Session() as sess:
     model_params = utils.get_model_params(sess)
 
   if not hasattr(models, model_params['model_name']):
@@ -57,31 +57,31 @@ def main(args):
   mdl = getattr(models, model_params['model_name'])
 
   # Instantiate new evaluation graph
-  tf.reset_default_graph()
+  tf.compat.v1.reset_default_graph()
   sz = model_params['net_input_size']
 
   log.info("Model {}".format(model_params['model_name']))
 
-  input_tensor = tf.placeholder(tf.float32, [1, sz, sz, 3], name='lowres_input')
-  with tf.variable_scope('inference'):
+  input_tensor = tf.compat.v1.placeholder(tf.float32, [1, sz, sz, 3], name='lowres_input')
+  with tf.compat.v1.variable_scope('inference'):
     prediction = mdl.inference(input_tensor, input_tensor, model_params, is_training=False)
   if model_params["model_name" ] == "HDRNetGaussianPyrNN":
-    output_tensor = tf.get_collection('packed_coefficients')[0]
-    output_tensor = tf.transpose(tf.squeeze(output_tensor), [3, 2, 0, 1, 4], name="output_coefficients")
+    output_tensor = tf.compat.v1.get_collection('packed_coefficients')[0]
+    output_tensor = tf.transpose(a=tf.squeeze(output_tensor), perm=[3, 2, 0, 1, 4], name="output_coefficients")
     log.info("Output shape".format(output_tensor.get_shape()))
   else:
-    output_tensor = tf.get_collection('packed_coefficients')[0]
-    output_tensor = tf.transpose(tf.squeeze(output_tensor), [3, 2, 0, 1, 4], name="output_coefficients")
+    output_tensor = tf.compat.v1.get_collection('packed_coefficients')[0]
+    output_tensor = tf.transpose(a=tf.squeeze(output_tensor), perm=[3, 2, 0, 1, 4], name="output_coefficients")
     log.info("Output shape {}".format(output_tensor.get_shape()))
-  saver = tf.train.Saver()
+  saver = tf.compat.v1.train.Saver()
 
-  gdef = tf.get_default_graph().as_graph_def()
+  gdef = tf.compat.v1.get_default_graph().as_graph_def()
 
   log.info("Restoring weights from {}".format(checkpoint_path))
   test_graph_name = "test_graph.pbtxt"
-  with tf.Session() as sess:
+  with tf.compat.v1.Session() as sess:
     saver.restore(sess, checkpoint_path)
-    tf.train.write_graph(sess.graph, args.checkpoint_dir, test_graph_name)
+    tf.io.write_graph(sess.graph, args.checkpoint_dir, test_graph_name)
 
     input_graph_path = os.path.join(args.checkpoint_dir, test_graph_name)
     output_graph_path = os.path.join(args.checkpoint_dir, "frozen_graph.pb")
@@ -104,7 +104,7 @@ def main(args):
 
     # Dump guide parameters
     if model_params['model_name'] == 'HDRNetCurves':
-      g = tf.get_default_graph()
+      g = tf.compat.v1.get_default_graph()
       ccm = g.get_tensor_by_name('inference/guide/ccm:0')
       ccm_bias = g.get_tensor_by_name('inference/guide/ccm_bias:0')
       shifts = g.get_tensor_by_name('inference/guide/shifts:0')
@@ -125,7 +125,7 @@ def main(args):
       save(mix_matrix_dump, os.path.join(args.checkpoint_dir, 'guide_mix_matrix_f32_1x4.bin'))
 
     elif model_params['model_name'] == "HDRNetGaussianPyrNN":
-      g = tf.get_default_graph()
+      g = tf.compat.v1.get_default_graph()
       for lvl in range(3):
         conv1_w = g.get_tensor_by_name('inference/guide/level_{}/conv1/weights:0'.format(lvl))
         conv1_b = g.get_tensor_by_name('inference/guide/level_{}/conv1/BatchNorm/beta:0'.format(lvl))
@@ -155,7 +155,7 @@ def main(args):
         save(conv2, os.path.join(args.checkpoint_dir, 'guide_level{}_conv2.bin'.format(lvl)))
 
     elif model_params['model_name'] in "HDRNetPointwiseNNGuide":
-      g = tf.get_default_graph()
+      g = tf.compat.v1.get_default_graph()
       conv1_w = g.get_tensor_by_name('inference/guide/conv1/weights:0')
       conv1_b = g.get_tensor_by_name('inference/guide/conv1/BatchNorm/beta:0')
       conv1_mu = g.get_tensor_by_name('inference/guide/conv1/BatchNorm/moving_mean:0')

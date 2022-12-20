@@ -47,10 +47,10 @@ def main(args):
     if not os.path.exists(path):
       log.error("{} does not exists, please run optimize_graph.sh first".format(path))
     with open(path) as fid:
-      graph_def = tf.GraphDef.FromString(fid.read())
+      graph_def = tf.compat.v1.GraphDef.FromString(fid.read())
 
     psize = 256
-    t_lowres_input = tf.placeholder(tf.float32, (psize, psize, 3))
+    t_lowres_input = tf.compat.v1.placeholder(tf.float32, (psize, psize, 3))
     t_input = tf.expand_dims(t_lowres_input, 0)
 
     if args.input is None:
@@ -65,7 +65,7 @@ def main(args):
     activations = {}
     weights = {}
     biases = {}
-    with tf.Session() as sess:
+    with tf.compat.v1.Session() as sess:
       ops = sess.graph.get_operations()
       for op in ops:
         name = op.name.replace('/', '_')
@@ -76,9 +76,9 @@ def main(args):
             continue
           a = tf.squeeze(get_layer(op.name), 0)
           log.info("Activation shape {}".format(a.get_shape()))
-          a = tf.pad(a, [[0,0], [0,2], [0,0]])
-          a = tf.transpose(a, [0, 2, 1])
-          sz = tf.shape(a)
+          a = tf.pad(tensor=a, paddings=[[0,0], [0,2], [0,0]])
+          a = tf.transpose(a=a, perm=[0, 2, 1])
+          sz = tf.shape(input=a)
           a = tf.reshape(a, (sz[0], sz[1]*sz[2]))
           activations[name] = a
         elif 'weights' in op.name:
@@ -86,17 +86,17 @@ def main(args):
             continue
           w = get_layer(op.name)
           log.info("Weights shape {}".format(w.get_shape()))
-          w = tf.pad(w, [[0,1], [0,1], [0,0], [0,0]])
-          w = tf.transpose(w, [3, 0, 2, 1])
-          sz = tf.shape(w)
+          w = tf.pad(tensor=w, paddings=[[0,1], [0,1], [0,0], [0,0]])
+          w = tf.transpose(a=w, perm=[3, 0, 2, 1])
+          sz = tf.shape(input=w)
           w = tf.reshape(w, (sz[0]*sz[1], sz[2]*sz[3]))
           weights[name] = w
         elif 'biases' in op.name:
           biases[name] = get_layer(op.name)
         log.info("Operation {}".format(op.name))
       
-    with tf.Session() as sess:
-      tf.global_variables_initializer().run()
+    with tf.compat.v1.Session() as sess:
+      tf.compat.v1.global_variables_initializer().run()
 
       w_ = sess.run(weights, {t_lowres_input: im0})
       for name in w_.keys():

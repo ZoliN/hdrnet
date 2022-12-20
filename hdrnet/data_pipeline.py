@@ -134,13 +134,13 @@ class DataPipeline(object):
   def _augment_data(self, inout, nchan=6):
     """Flip, crop and rotate samples randomly."""
 
-    with tf.name_scope('data_augmentation'):
+    with tf.compat.v1.name_scope('data_augmentation'):
       if self.fliplr:
         inout = tf.image.random_flip_left_right(inout, seed=1234)
       if self.flipud:
         inout = tf.image.random_flip_up_down(inout, seed=3456)
       if self.rotate:
-        angle = tf.random_uniform((), minval=0, maxval=4, dtype=tf.int32, seed=4567)
+        angle = tf.random.uniform((), minval=0, maxval=4, dtype=tf.int32, seed=4567)
         inout = tf.case([(tf.equal(angle, 1), lambda: tf.image.rot90(inout, k=1)),
                          (tf.equal(angle, 2), lambda: tf.image.rot90(inout, k=2)),
                          (tf.equal(angle, 3), lambda: tf.image.rot90(inout, k=3))],
@@ -148,30 +148,30 @@ class DataPipeline(object):
 
       inout.set_shape([None, None, nchan])
 
-      with tf.name_scope('crop'):
-        shape = tf.shape(inout)
-        new_height = tf.to_int32(self.output_resolution[0])
-        new_width = tf.to_int32(self.output_resolution[1])
-        height_ok = tf.assert_less_equal(new_height, shape[0])
-        width_ok = tf.assert_less_equal(new_width, shape[1])
+      with tf.compat.v1.name_scope('crop'):
+        shape = tf.shape(input=inout)
+        new_height = tf.cast(self.output_resolution[0], dtype=tf.int32)
+        new_width = tf.cast(self.output_resolution[1], dtype=tf.int32)
+        height_ok = tf.compat.v1.assert_less_equal(new_height, shape[0])
+        width_ok = tf.compat.v1.assert_less_equal(new_width, shape[1])
         with tf.control_dependencies([height_ok, width_ok]):
           if self.random_crop:
-            inout = tf.random_crop(
+            inout = tf.image.random_crop(
                 inout, tf.stack([new_height, new_width, nchan]))
           else:
-            height_offset = tf.to_int32((shape[0]-new_height)/2)
-            width_offset = tf.to_int32((shape[1]-new_width)/2)
+            height_offset = tf.cast((shape[0]-new_height)/2, dtype=tf.int32)
+            width_offset = tf.cast((shape[1]-new_width)/2, dtype=tf.int32)
             inout = tf.image.crop_to_bounding_box(
                 inout, height_offset, width_offset,
                 new_height, new_width)
 
       inout.set_shape([None, None, nchan])
-      inout = tf.image.resize_images(
+      inout = tf.image.resize(
           inout, [self.output_resolution[0], self.output_resolution[1]])
       fullres = inout
 
-      with tf.name_scope('resize'):
-        inout = tf.image.resize_images(
+      with tf.compat.v1.name_scope('resize'):
+        inout = tf.image.resize(
             inout, [self.net_input_size, self.net_input_size],
             method=tf.image.ResizeMethod.NEAREST_NEIGHBOR)
 
@@ -220,8 +220,8 @@ class ImageFilesDataPipeline(DataPipeline):
     path_ds = tf.data.Dataset.from_tensor_slices(all_image_paths)
 
     def preproc(x):
-      input_file = tf.read_file(x[0])
-      output_file = tf.read_file(x[1])
+      input_file = tf.io.read_file(x[0])
+      output_file = tf.io.read_file(x[1])
 
       if os.path.splitext(input_files[0])[-1] == '.jpg': 
         im_input = tf.image.decode_jpeg(input_file, channels=3)
@@ -235,9 +235,9 @@ class ImageFilesDataPipeline(DataPipeline):
 
       # normalize input/output
       sample = {}
-      with tf.name_scope('normalize_images'):
-        im_input = tf.to_float(im_input)/input_wl
-        im_output = tf.to_float(im_output)/output_wl
+      with tf.compat.v1.name_scope('normalize_images'):
+        im_input = tf.cast(im_input, dtype=tf.float32)/input_wl
+        im_output = tf.cast(im_output, dtype=tf.float32)/output_wl
 
       inout = tf.concat([im_input, im_output], 2)
       fullres, inout = self._augment_data(inout, 6)
@@ -283,12 +283,12 @@ class HDRpDataPipeline(DataPipeline):
     output_wl = 255.0
 
     # normalize input/output
-    with tf.name_scope('normalize_images'):
+    with tf.compat.v1.name_scope('normalize_images'):
       im_input = sample['image_input']
-      im_input = tf.to_float(im_input)/input_wl
+      im_input = tf.cast(im_input, dtype=tf.float32)/input_wl
 
       im_output = sample['image_output']
-      im_output = tf.to_float(im_output)/output_wl
+      im_output = tf.cast(im_output, dtype=tf.float32)/output_wl
 
     inout = tf.concat([im_input, im_output], 2)
     fullres, inout = self._augment_data(inout, 6)
@@ -321,36 +321,36 @@ class StyleTransferDataPipeline(DataPipeline):
 
     self.nsamples = len(input_files)
 
-    input_queue, model_queue, output_queue = tf.train.slice_input_producer(
+    input_queue, model_queue, output_queue = tf.compat.v1.train.slice_input_producer(
         [input_files, model_files, output_files], capacity=1000, shuffle=self.shuffle,
         num_epochs=self.num_epochs, seed=1234)
 
     input_wl = 255.0
     input_dtype = tf.uint8
 
-    input_file = tf.read_file(input_queue)
-    model_file = tf.read_file(model_queue)
-    output_file = tf.read_file(output_queue)
+    input_file = tf.io.read_file(input_queue)
+    model_file = tf.io.read_file(model_queue)
+    output_file = tf.io.read_file(output_queue)
 
     im_input = tf.image.decode_png(input_file, dtype=input_dtype, channels=3)
     im_model = tf.image.decode_png(model_file, dtype=input_dtype, channels=3)
     im_output = tf.image.decode_png(output_file, dtype=input_dtype, channels=3)
 
     # normalize input/output
-    with tf.name_scope('normalize_images'):
-      im_input = tf.to_float(im_input)/input_wl
-      im_model = tf.to_float(im_model)/input_wl
-      im_output = tf.to_float(im_output)/input_wl
+    with tf.compat.v1.name_scope('normalize_images'):
+      im_input = tf.cast(im_input, dtype=tf.float32)/input_wl
+      im_model = tf.cast(im_model, dtype=tf.float32)/input_wl
+      im_output = tf.cast(im_output, dtype=tf.float32)/input_wl
 
     inout = tf.concat([im_input, im_output], 2)
     fullres, inout = self._augment_data(inout, 6)
 
-    mdl = tf.image.resize_images(im_model, tf.shape(inout)[:2])
+    mdl = tf.image.resize(im_model, tf.shape(input=inout)[:2])
 
     sample = {}
     sample['lowres_input'] = tf.concat([inout[:, :, :3], mdl], 2) 
     sample['lowres_output'] = inout[:, :, 3:]
-    fullres_mdl = tf.image.resize_images(im_model, tf.shape(fullres)[:2])
+    fullres_mdl = tf.image.resize(im_model, tf.shape(input=fullres)[:2])
     sample['image_input'] = tf.concat([fullres[:, :, :3], fullres_mdl], 2) 
     sample['image_output'] = fullres[:, :, 3:]
     return sample
@@ -409,7 +409,7 @@ class RecordWriter(object):
     if self.written % self.records_per_file == 0:
       self.close()
       self._fname = self._get_new_filename()
-      self._writer = tf.python_io.TFRecordWriter(self._fname)
+      self._writer = tf.io.TFRecordWriter(self._fname)
 
     feature = {}
     for k in data.keys():
@@ -456,28 +456,28 @@ class RecordReader(object):
       shuffle: if true, shuffle the list at each epoch
     """
     self._fnames = fnames
-    self._fname_queue = tf.train.string_input_producer(
+    self._fname_queue = tf.compat.v1.train.string_input_producer(
         self._fnames,
         capacity=1000,
         shuffle=shuffle,
         num_epochs=num_epochs,
         shared_name='input_files')
-    self._reader = tf.TFRecordReader()
+    self._reader = tf.compat.v1.TFRecordReader()
 
     # Read first record to initialize the shape parameters
     with tf.Graph().as_default():
-      fname_queue = tf.train.string_input_producer(self._fnames)
-      reader = tf.TFRecordReader()
+      fname_queue = tf.compat.v1.train.string_input_producer(self._fnames)
+      reader = tf.compat.v1.TFRecordReader()
       _, serialized = reader.read(fname_queue)
       shapes = self._parse_shape(serialized)
       dtypes = self._parse_dtype(serialized)
 
-      config = tf.ConfigProto()
+      config = tf.compat.v1.ConfigProto()
       config.gpu_options.allow_growth = True
 
-      with tf.Session(config=config) as sess:
+      with tf.compat.v1.Session(config=config) as sess:
         coord = tf.train.Coordinator()
-        threads = tf.train.start_queue_runners(sess=sess, coord=coord)
+        threads = tf.compat.v1.train.start_queue_runners(sess=sess, coord=coord)
 
         self.shapes = sess.run(shapes)
         self.shapes = {k: self.shapes[k+'_sz'].tolist() for k in self.FEATURES}
@@ -502,28 +502,28 @@ class RecordReader(object):
   def _get_dtype_features(self):
     ret = {}
     for i, f in enumerate(self.FEATURES):
-      ret[f+'_dtype'] = tf.FixedLenFeature([1,], tf.int64)
+      ret[f+'_dtype'] = tf.io.FixedLenFeature([1,], tf.int64)
     return ret
 
   def _get_sz_features(self):
     ret = {}
     for i, f in enumerate(self.FEATURES):
-      ret[f+'_sz'] = tf.FixedLenFeature([self.NDIMS[i],], tf.int64)
+      ret[f+'_sz'] = tf.io.FixedLenFeature([self.NDIMS[i],], tf.int64)
     return ret
 
   def _get_data_features(self):
     ret = {}
     for f in self.FEATURES:
-      ret[f] = tf.FixedLenFeature([], tf.string)
+      ret[f] = tf.io.FixedLenFeature([], tf.string)
     return ret
 
   def _parse_shape(self, serialized):
-    sample = tf.parse_single_example(serialized,
+    sample = tf.io.parse_single_example(serialized=serialized,
                                      features=self._get_sz_features())
     return sample
 
   def _parse_dtype(self, serialized):
-    sample = tf.parse_single_example(serialized,
+    sample = tf.io.parse_single_example(serialized=serialized,
                                      features=self._get_dtype_features())
     return sample
 
@@ -533,13 +533,13 @@ class RecordReader(object):
     sz_feats = self._get_sz_features()
     for s in sz_feats:
       feats[s] = sz_feats[s]
-    sample = tf.parse_single_example(serialized, features=feats)
+    sample = tf.io.parse_single_example(serialized=serialized, features=feats)
 
     data = {}
     for i, f in enumerate(self.FEATURES):
-      s = tf.to_int32(sample[f+'_sz'])
+      s = tf.cast(sample[f+'_sz'], dtype=tf.int32)
 
-      data[f] = tf.decode_raw(sample[f], self.dtypes[f], name='decode_{}'.format(f))
+      data[f] = tf.io.decode_raw(sample[f], self.dtypes[f], name='decode_{}'.format(f))
       data[f] = tf.reshape(data[f], s)
       
     return data
