@@ -11,6 +11,8 @@ old_scripts
 pretrained_models
 input
 output
+train/test
+train/out
 
 !pretrained_models/download.py
 !pretrained_models/local_laplacian_sample

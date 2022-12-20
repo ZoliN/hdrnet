@@ -96,13 +96,13 @@ def main(args, model_params, data_params):
   # ---------------------------------------------------------------------------
 
   # Training graph
-  with tf.compat.v1.name_scope('train'):
-    with tf.compat.v1.variable_scope('inference'):
-      prediction = mdl.inference(
-          samples['lowres_input'], samples['image_input'],
-          model_params, is_training=True)
-    loss = metrics.l2_loss(samples['image_output'], prediction)
-    psnr = metrics.psnr(samples['image_output'], prediction)
+  #with tf.compat.v1.name_scope('train'):
+  with tf.compat.v1.variable_scope('inference'):
+    prediction = mdl.inference(
+        samples['lowres_input'], samples['image_input'],
+        model_params, is_training=True)
+  loss = metrics.l2_loss(samples['image_output'], prediction)
+  psnr = metrics.psnr(samples['image_output'], prediction)
 
   # Evaluation graph
   if args.eval_data_dir is not None:
@@ -114,7 +114,7 @@ def main(args, model_params, data_params):
       eval_psnr = metrics.psnr(eval_samples['image_output'], prediction)
 
   # Optimizer
-  global_step = tf.contrib.framework.get_or_create_global_step()
+  global_step = tf.compat.v1.train.get_or_create_global_step()
   with tf.compat.v1.name_scope('optimizer'):
     update_ops = tf.compat.v1.get_collection(tf.compat.v1.GraphKeys.UPDATE_OPS)
     updates = tf.group(*update_ops, name='update_ops')

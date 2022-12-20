@@ -15,12 +15,15 @@
 """Shortcuts for some graph operators."""
 
 import tensorflow as tf
+import tensorflow.compat.v1 as tfv1
 import numpy as np
 
 from hdrnet import hdrnet_ops
 
-w_initializer = tf.contrib.layers.variance_scaling_initializer
-b_initializer = tf.compat.v1.constant_initializer
+
+
+w_initializer = tf.initializers.VarianceScaling()
+b_initializer = tf.initializers.zeros()
 
 def conv(inputs, num_outputs, kernel_size, stride=1, rate=1,
     use_bias=True,
@@ -28,34 +31,37 @@ def conv(inputs, num_outputs, kernel_size, stride=1, rate=1,
     activation_fn=tf.nn.relu, 
     scope=None, reuse=False):
   if batch_norm:
-    normalizer_fn = tf.contrib.layers.batch_norm
+    normalizer_fn = tfv1.nn.fused_batch_norm
     b_init = None
   else:
     normalizer_fn = None
     if use_bias:
-      b_init = b_initializer(0.0)
+      b_init = b_initializer
     else:
       b_init = None
 
-  output = tf.contrib.layers.convolution2d(
-      inputs=inputs,
-      num_outputs=num_outputs, kernel_size=kernel_size, 
-      stride=stride, padding='SAME',
-      rate=rate,
-      weights_initializer=w_initializer(),
-      biases_initializer=b_init,
-      normalizer_fn=normalizer_fn,
-      normalizer_params={
-        'center':True, 'is_training':is_training,
-        'variables_collections':{
-          'beta':[tf.compat.v1.GraphKeys.BIASES],
-          'moving_mean':[tf.compat.v1.GraphKeys.MOVING_AVERAGE_VARIABLES],
-          'moving_variance':[tf.compat.v1.GraphKeys.MOVING_AVERAGE_VARIABLES]},
-        }, 
-      activation_fn=activation_fn, 
-      variables_collections={'weights':[tf.compat.v1.GraphKeys.WEIGHTS], 'biases':[tf.compat.v1.GraphKeys.BIASES]},
-      outputs_collections=[tf.compat.v1.GraphKeys.ACTIVATIONS],
-      scope=scope, reuse=reuse)
+  output = tf.keras.layers.Conv2D(
+      
+      filters=num_outputs, kernel_size=kernel_size, 
+      strides=stride, padding='SAME',
+      dilation_rate=rate,
+      kernel_initializer=w_initializer,
+      bias_initializer=b_init,
+      activation=activation_fn,
+      name = scope
+      )(inputs)
+
+
+      # normalizer_fn=normalizer_fn,
+      # normalizer_params={
+      #   'center':True, 'is_training':is_training,
+      #   'variables_collections':{
+      #     'beta':[tfv1.GraphKeys.BIASES],
+      #     'moving_mean':[tfv1.GraphKeys.MOVING_AVERAGE_VARIABLES],
+      #     'moving_variance':[tfv1.GraphKeys.MOVING_AVERAGE_VARIABLES]},
+      #   }, 
+
+
   return output
 
 
@@ -65,33 +71,31 @@ def fc(inputs, num_outputs,
     activation_fn=tf.nn.relu, 
     scope=None):
   if batch_norm:
-    normalizer_fn = tf.contrib.layers.batch_norm
+    normalizer_fn = tfv1.nn.fused_batch_norm
     b_init = None
   else:
     normalizer_fn = None
     if use_bias:
-      b_init = b_initializer(0.0)
+      b_init = b_initializer
     else:
       b_init = None
 
-  output = tf.contrib.layers.fully_connected(
-      inputs=inputs,
-      num_outputs=num_outputs,
-      weights_initializer=w_initializer(),
-      biases_initializer=b_init,
-      normalizer_fn=normalizer_fn,
-      normalizer_params={
-        'center':True, 'is_training':is_training,
-        'variables_collections':{
-          'beta':[tf.compat.v1.GraphKeys.BIASES],
-          'moving_mean':[tf.compat.v1.GraphKeys.MOVING_AVERAGE_VARIABLES],
-          'moving_variance':[tf.compat.v1.GraphKeys.MOVING_AVERAGE_VARIABLES]},
-        }, 
-      activation_fn=activation_fn, 
-      variables_collections={'weights':[tf.compat.v1.GraphKeys.WEIGHTS], 'biases':[tf.compat.v1.GraphKeys.BIASES]},
-      scope=scope)
+  output = tf.keras.layers.Dense(
+      units=num_outputs,
+      kernel_initializer=w_initializer,
+      bias_initializer=b_init,
+      activation=activation_fn,
+      name = scope
+      )(inputs)
   return output
-
+      # normalizer_fn=normalizer_fn,
+      # normalizer_params={
+      #   'center':True, 'is_training':is_training,
+      #   'variables_collections':{
+      #     'beta':[tfv1.GraphKeys.BIASES],
+      #     'moving_mean':[tfv1.GraphKeys.MOVING_AVERAGE_VARIABLES],
+      #     'moving_variance':[tfv1.GraphKeys.MOVING_AVERAGE_VARIABLES]},
+      #   }, 
 
 # -----------------------------------------------------------------------------
 
@@ -108,7 +112,7 @@ def bilateral_slice(grid, guide, name=None):
     sliced: (Tensor) [batch_size, h, w, n_outputs] sliced output.
   """
 
-  with tf.compat.v1.name_scope(name):
+  with tfv1.name_scope(name):
     gridshape = grid.get_shape().as_list()
     if len(gridshape) == 6:
       _, _, _, _, n_out, n_in = gridshape
@@ -136,7 +140,7 @@ def bilateral_slice_apply(grid, guide, input_image, has_offset=True, name=None):
     sliced: (Tensor) [batch_size, h, w, n_outputs] sliced output.
   """
 
-  with tf.compat.v1.name_scope(name):
+  with tfv1.name_scope(name):
     gridshape = grid.get_shape().as_list()
     if len(gridshape) == 6:
       gs = tf.shape(input=grid)
@@ -250,7 +254,7 @@ def apply(sliced, input_image, has_affine_term=True, name=None):
       ValueError: if the input is not properly dimensioned.
       ValueError: if the affine model parameter dimensions do not match the input.
     """
-    with tf.compat.v1.name_scope(name):
+    with tfv1.name_scope(name):
         if len(input_image.get_shape().as_list()) != 4:
             raise ValueError('input image should have dims [b,h,w,n_in].')
         in_shape = input_image.get_shape().as_list()

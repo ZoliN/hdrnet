@@ -42,6 +42,7 @@ logging.basicConfig(format="[%(process)d] %(levelname)s %(filename)s:%(lineno)s 
 log = logging.getLogger("train")
 log.setLevel(logging.INFO)
 
+numImgChs = 1
 
 def get_input_list(path):
   regex = re.compile(".*.(png|jpeg|jpg|tif|tiff)")
@@ -92,8 +93,8 @@ def main(args):
 
   tf.compat.v1.reset_default_graph()
   net_shape = model_params['net_input_size']
-  t_fullres_input = tf.compat.v1.placeholder(tf.float32, (1, None, None, 3))
-  t_lowres_input = tf.compat.v1.placeholder(tf.float32, (1, net_shape, net_shape, 3))
+  t_fullres_input = tf.compat.v1.placeholder(tf.float32, (1, None, None, numImgChs))
+  t_lowres_input = tf.compat.v1.placeholder(tf.float32, (1, net_shape, net_shape, numImgChs))
 
   with tf.compat.v1.variable_scope('inference'):
     prediction = mdl.inference(
@@ -149,15 +150,21 @@ def main(args):
 
       log.info("Processing {}".format(input_path))
       im_input = cv2.imread(input_path, -1)  # -1 means read as is, no conversions.
+      if im_input.ndim == 2:
+        im_input = im_input[:,:,np.newaxis]
+        if numImgChs == 3:
+          im_input = cv2.cvtColor(im_input, cv2.COLOR_GRAY2BGR);
       if im_input.shape[2] == 4:
         log.info("Input {} has 4 channels, dropping alpha".format(input_path))
         im_input = im_input[:, :, :3]
 
-      im_input = np.flip(im_input, 2)  # OpenCV reads BGR, convert back to RGB.
+      if im_input.shape[2] == 3:
+        im_input = np.flip(im_input, 2)  # OpenCV reads BGR, convert back to RGB.
 
-      log.info("Max level: {}".format(np.amax(im_input[:, :, 0])))
-      log.info("Max level: {}".format(np.amax(im_input[:, :, 1])))
-      log.info("Max level: {}".format(np.amax(im_input[:, :, 2])))
+        log.info("Max level: {}".format(np.amax(im_input[:, :, 0])))
+        log.info("Max level: {}".format(np.amax(im_input[:, :, 1])))
+        log.info("Max level: {}".format(np.amax(im_input[:, :, 2])))
+
 
       # HACK for HDR+.
       if im_input.dtype == np.uint16 and args.hdrp:

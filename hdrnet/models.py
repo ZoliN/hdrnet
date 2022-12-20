@@ -15,10 +15,13 @@
 """Defines computation graphs."""
 
 import tensorflow as tf
+import tensorflow.compat.v1 as tfv1
 import numpy as np
 import os
 
 from hdrnet.layers import (conv, fc, bilateral_slice_apply)
+
+numImgChs = 1
 
 __all__ = [
   'HDRNetCurves',
@@ -33,28 +36,28 @@ class HDRNetCurves(object):
   
   @classmethod
   def n_out(cls):
-    return 3
+    return numImgChs
 
   @classmethod
   def n_in(cls):
-    return 3+1
+    return numImgChs+1
 
   @classmethod
   def inference(cls, lowres_input, fullres_input, params,
                 is_training=False):
 
-    with tf.compat.v1.variable_scope('coefficients'):
+    with tfv1.variable_scope('coefficients'):
       bilateral_coeffs = cls._coefficients(lowres_input, params, is_training)
-      tf.compat.v1.add_to_collection('bilateral_coefficients', bilateral_coeffs)
+      tfv1.add_to_collection('bilateral_coefficients', bilateral_coeffs)
 
-    with tf.compat.v1.variable_scope('guide'):
+    with tfv1.variable_scope('guide'):
       guide = cls._guide(fullres_input, params, is_training)
-      tf.compat.v1.add_to_collection('guide', guide)
+      tfv1.add_to_collection('guide', guide)
 
-    with tf.compat.v1.variable_scope('output'):
+    with tfv1.variable_scope('output'):
       output = cls._output(
           fullres_input, guide, bilateral_coeffs)
-      tf.compat.v1.add_to_collection('output', output)
+      tfv1.add_to_collection('output', output)
 
     return output
 
@@ -66,7 +69,7 @@ class HDRNetCurves(object):
     spatial_bin = int(params['spatial_bin'])
 
     # -----------------------------------------------------------------------
-    with tf.compat.v1.variable_scope('splat'):
+    with tfv1.variable_scope('splat'):
       n_ds_layers = int(np.log2(params['net_input_size']/spatial_bin))
 
       current_layer = input_tensor
@@ -83,7 +86,7 @@ class HDRNetCurves(object):
     # -----------------------------------------------------------------------
 
     # -----------------------------------------------------------------------
-    with tf.compat.v1.variable_scope('global'):
+    with tfv1.variable_scope('global'):
       n_global_layers = int(np.log2(spatial_bin/4))  # 4x4 at the coarsest lvl
 
       current_layer = splat_features
@@ -106,7 +109,7 @@ class HDRNetCurves(object):
     # -----------------------------------------------------------------------
 
     # -----------------------------------------------------------------------
-    with tf.compat.v1.variable_scope('local'):
+    with tfv1.variable_scope('local'):
       current_layer = splat_features
       current_layer = conv(current_layer, 8*cm*gd, 3, 
                            batch_norm=params['batch_norm'], 
@@ -119,24 +122,24 @@ class HDRNetCurves(object):
     # -----------------------------------------------------------------------
 
     # -----------------------------------------------------------------------
-    with tf.compat.v1.name_scope('fusion'):
+    with tfv1.name_scope('fusion'):
       fusion_grid = grid_features
       fusion_global = tf.reshape(global_features, [bs, 1, 1, 8*cm*gd])
       fusion = tf.nn.relu(fusion_grid+fusion_global)
     # -----------------------------------------------------------------------
 
     # -----------------------------------------------------------------------
-    with tf.compat.v1.variable_scope('prediction'):
+    with tfv1.variable_scope('prediction'):
       current_layer = fusion
       current_layer = conv(current_layer, gd*cls.n_out()*cls.n_in(), 1,
                                   activation_fn=None, scope='conv1')
 
-      with tf.compat.v1.name_scope('unroll_grid'):
+      with tfv1.name_scope('unroll_grid'):
         current_layer = tf.stack(
             tf.split(current_layer, cls.n_out()*cls.n_in(), axis=3), axis=4)
         current_layer = tf.stack(
             tf.split(current_layer, cls.n_in(), axis=4), axis=5)
-      tf.compat.v1.add_to_collection('packed_coefficients', current_layer)
+      tfv1.add_to_collection('packed_coefficients', current_layer)
     # -----------------------------------------------------------------------
 
     return current_layer
@@ -150,9 +153,9 @@ class HDRNetCurves(object):
 
     # Color space change
     idtity = np.identity(nchans, dtype=np.float32) + np.random.randn(1).astype(np.float32)*1e-4
-    ccm = tf.compat.v1.get_variable('ccm', dtype=tf.float32, initializer=idtity)
-    with tf.compat.v1.name_scope('ccm'):
-      ccm_bias = tf.compat.v1.get_variable('ccm_bias', shape=[nchans,], dtype=tf.float32, initializer=tf.compat.v1.constant_initializer(0.0))
+    ccm = tfv1.get_variable('ccm', dtype=tf.float32, initializer=idtity)
+    with tfv1.name_scope('ccm'):
+      ccm_bias = tfv1.get_variable('ccm_bias', shape=[nchans,], dtype=tf.float32, initializer=tfv1.constant_initializer(0.0))
 
       guidemap = tf.matmul(tf.reshape(input_tensor, [-1, nchans]), ccm)
       guidemap = tf.nn.bias_add(guidemap, ccm_bias, name='ccm_bias_add')
@@ -160,29 +163,28 @@ class HDRNetCurves(object):
       guidemap = tf.reshape(guidemap, tf.shape(input=input_tensor))
 
     # Per-channel curve
-    with tf.compat.v1.name_scope('curve'):
+    with tfv1.name_scope('curve'):
       shifts_ = np.linspace(0, 1, npts, endpoint=False, dtype=np.float32)
       shifts_ = shifts_[np.newaxis, np.newaxis, np.newaxis, :]
       shifts_ = np.tile(shifts_, (1, 1, nchans, 1))
 
       guidemap = tf.expand_dims(guidemap, 4)
-      shifts = tf.compat.v1.get_variable('shifts', dtype=tf.float32, initializer=shifts_)
+      shifts = tfv1.get_variable('shifts', dtype=tf.float32, initializer=shifts_)
 
       slopes_ = np.zeros([1, 1, 1, nchans, npts], dtype=np.float32)
       slopes_[:, :, :, :, 0] = 1.0
-      slopes = tf.compat.v1.get_variable('slopes', dtype=tf.float32, initializer=slopes_)
+      slopes = tfv1.get_variable('slopes', dtype=tf.float32, initializer=slopes_)
 
       guidemap = tf.reduce_sum(input_tensor=slopes*tf.nn.relu(guidemap-shifts), axis=[4])
 
-    guidemap = tf.contrib.layers.convolution2d(
-        inputs=guidemap,
-        num_outputs=1, kernel_size=1, 
-        weights_initializer=tf.compat.v1.constant_initializer(1.0/nchans),
-        biases_initializer=tf.compat.v1.constant_initializer(0),
-        activation_fn=None, 
-        variables_collections={'weights':[tf.compat.v1.GraphKeys.WEIGHTS], 'biases':[tf.compat.v1.GraphKeys.BIASES]},
-        outputs_collections=[tf.compat.v1.GraphKeys.ACTIVATIONS],
-        scope='channel_mixing')
+    guidemap = tf.keras.layers.Conv2D(
+        filters=1, 
+        kernel_size=1, 
+        kernel_initializer=tfv1.constant_initializer(1.0/nchans),
+        bias_initializer=tfv1.constant_initializer(0),
+        activation=None,
+        name='channel_mixing'
+        )(guidemap)
 
     guidemap = tf.clip_by_value(guidemap, 0, 1)
     guidemap = tf.squeeze(guidemap, axis=[3,])
@@ -215,37 +217,37 @@ class HDRNetGaussianPyrNN(HDRNetPointwiseNNGuide):
   """
   @classmethod
   def n_scales(cls):
-    return 3
+    return 5
 
   @classmethod
   def n_out(cls):
-    return 3*cls.n_scales()
+    return numImgChs*cls.n_scales()
 
   @classmethod
   def n_in(cls):
-    return 3+1
+    return numImgChs+1
 
   @classmethod
   def inference(cls, lowres_input, fullres_input, params,
                 is_training=False):
 
-    with tf.compat.v1.variable_scope('coefficients'):
+    with tfv1.variable_scope('coefficients'):
       bilateral_coeffs = cls._coefficients(lowres_input, params, is_training)
-      tf.compat.v1.add_to_collection('bilateral_coefficients', bilateral_coeffs)
+      tfv1.add_to_collection('bilateral_coefficients', bilateral_coeffs)
 
-    with tf.compat.v1.variable_scope('multiscale'):
+    with tfv1.variable_scope('multiscale'):
       multiscale = cls._multiscale_input(fullres_input)
       for m in multiscale:
-        tf.compat.v1.add_to_collection('multiscale', m)
+        tfv1.add_to_collection('multiscale', m)
 
-    with tf.compat.v1.variable_scope('guide'):
+    with tfv1.variable_scope('guide'):
       guide = cls._guide(multiscale, params, is_training)
       for g in guide:
-        tf.compat.v1.add_to_collection('guide', g)
+        tfv1.add_to_collection('guide', g)
 
-    with tf.compat.v1.variable_scope('output'):
+    with tfv1.variable_scope('output'):
       output = cls._output(multiscale, guide, bilateral_coeffs)
-      tf.compat.v1.add_to_collection('output', output)
+      tfv1.add_to_collection('output', output)
 
     return output
 
@@ -267,7 +269,7 @@ class HDRNetGaussianPyrNN(HDRNetPointwiseNNGuide):
   def _guide(cls, multiscale, params, is_training):
     guide_lvls = []
     for il, lvl in enumerate(multiscale):
-      with tf.compat.v1.variable_scope('level_{}'.format(il)):
+      with tfv1.variable_scope('level_{}'.format(il)):
         guide_lvl = HDRNetPointwiseNNGuide._guide(lvl, params, is_training)
       guide_lvls.append(guide_lvl)
     return guide_lvls
@@ -275,7 +277,7 @@ class HDRNetGaussianPyrNN(HDRNetPointwiseNNGuide):
   @classmethod
   def _output(cls, lvls, guide_lvls, coeffs):
     for il, (lvl, guide_lvl) in enumerate(reversed(list(zip(lvls, guide_lvls)))):
-      c = coeffs[:, :, :, :, il*3:(il+1)*3, :]
+      c = coeffs[:, :, :, :, il*numImgChs:(il+1)*numImgChs, :]
       out_lvl = HDRNetPointwiseNNGuide._output(lvl, guide_lvl, c)
 
       if il == 0:
