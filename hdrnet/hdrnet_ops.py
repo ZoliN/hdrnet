@@ -18,12 +18,14 @@ import os
 import tensorflow as tf
 from tensorflow.python.framework import ops
 
+useGPU = True
+
 #tf.disable_v2_behavior()
 __all__ = ['bilateral_slice', 'bilateral_slice_apply']
 #print(" ".join(tf.sysconfig.get_link_flags()))
 path = os.path.dirname(os.path.abspath(__file__))
 path = tf.compat.v1.resource_loader.get_path_to_datafile(
-    os.path.join(path, 'lib', 'hdrnet_ops.so'))
+    os.path.join(path, 'lib', 'hdrnet_ops_gpu.so' if useGPU else 'hdrnet_ops.so'))
 
 _hdrnet = tf.load_op_library(path)
 

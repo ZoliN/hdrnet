@@ -20,6 +20,7 @@ import numpy as np
 import os
 
 from hdrnet.layers import (conv, fc, bilateral_slice_apply)
+from hdrnet.hdrnet_ops import (useGPU)
 
 numImgChs = 1
 
@@ -193,7 +194,7 @@ class HDRNetCurves(object):
 
   @classmethod
   def _output(cls, im, guide, coeffs):
-    with tf.device('/cpu:0'):
+    with tf.device('/gpu:0' if useGPU else '/cpu:0'):
       out = bilateral_slice_apply(coeffs, guide, im, has_offset=True, name='slice')
     return out
 
