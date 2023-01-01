@@ -176,7 +176,7 @@ class DataPipeline(object):
       with tfv1.name_scope('resize'):
         inout = tf.image.resize(
             inout, [self.net_input_size, self.net_input_size],
-            method=tf.image.ResizeMethod.NEAREST_NEIGHBOR)
+            method=tf.image.ResizeMethod.AREA)
 
       return fullres, inout
 
