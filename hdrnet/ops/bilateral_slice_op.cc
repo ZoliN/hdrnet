@@ -289,7 +289,7 @@ REGISTER_OP("BilateralSlice")
       const DimensionHandle w = c->Dim(guide, 2);
       const DimensionHandle grid_channels = c->Dim(grid, 4);
       c->set_output(0, c->MakeShape({batch_size, h, w, grid_channels}));
-      return Status::OK();
+      return Status();
     });
 
 REGISTER_OP("BilateralSliceGrad")
@@ -303,7 +303,7 @@ REGISTER_OP("BilateralSliceGrad")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 3, &guide));
       c->set_output(0, grid);
       c->set_output(1, guide);
-      return Status::OK();
+      return Status();
     })
     .Output("grid_grad: float")
     .Output("guide_grad: float");

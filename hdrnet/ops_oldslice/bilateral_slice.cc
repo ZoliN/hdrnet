@@ -48,7 +48,7 @@ Slices input in in the location defined by guide, to produce output.
     const DimensionHandle w = c->Dim(guide, 2);
     const DimensionHandle grid_channels = c->Dim(grid, 4);
     c->set_output(0, c->MakeShape({batch_size, h, w, grid_channels}));
-    return Status::OK();
+    return Status();
   });
 
 
@@ -96,7 +96,7 @@ Slices input in in the location defined by guide and apply it, to produce output
                                     true, &output_channels));
     }
     c->set_output(0, c->MakeShape({batch_size, h, w, output_channels}));
-    return Status::OK();
+    return Status();
   });
 
 REGISTER_OP("BilateralSliceApplyGrad")

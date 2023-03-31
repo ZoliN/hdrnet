@@ -418,7 +418,7 @@ REGISTER_OP("BilateralSliceApply")
                                      true, &output_channels));
       }
       c->set_output(0, c->MakeShape({batch_size, h, w, output_channels}));
-      return Status::OK();
+      return Status();
     });
 
 REGISTER_OP("BilateralSliceApplyGrad")
@@ -437,7 +437,7 @@ REGISTER_OP("BilateralSliceApplyGrad")
       c->set_output(0, grid);
       c->set_output(1, guide);
       c->set_output(2, input_image);
-      return Status::OK();
+      return Status();
     })
     .Output("grid_grad: float")
     .Output("guide_grad: float")
